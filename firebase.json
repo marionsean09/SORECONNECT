@@ -1,0 +1,31 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "soreconnect-76e06",
+          "appId": "1:326022795774:android:360a6a1f953dad386cf0af",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "soreconnect-76e06",
+          "configurations": {
+            "android": "1:326022795774:android:360a6a1f953dad386cf0af",
+            "ios": "1:326022795774:ios:c8f0d589321712ca6cf0af",
+            "macos": "1:326022795774:ios:c8f0d589321712ca6cf0af",
+            "web": "1:326022795774:web:aba01a4b266f886f6cf0af",
+            "windows": "1:326022795774:web:e533123c158e86356cf0af"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-southeast1",
+    "rules": "firebase deploy --only firestore:rules",
+    "indexes": "(firestore.indexes.json)"
+  }
+}

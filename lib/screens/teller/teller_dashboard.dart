@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:soreconnect/screens/teller/generate_reports_screen.dart';
 import 'package:soreconnect/screens/teller/verify_meter_readings_screen.dart';
 import 'package:soreconnect/screens/complaints/manage_complaints_screen.dart';
@@ -15,59 +17,104 @@ class TellerDashboard extends StatefulWidget {
 class _TellerDashboardState extends State<TellerDashboard> {
   static const Color _primaryGreen = Color(0xFF1B5E20);
   static const Color _accentGold = Color(0xFFDAA520);
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  String _reportType = 'Monthly';
+
+  int _selectedMonth = DateTime.now().month;
+  int _selectedYear = DateTime.now().year;
+
+  final List<String> _months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
 
   Future<void> _logout() async {
     await _auth.signOut();
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
       );
     }
   }
 
-  Widget _buildActionCard({
-    required IconData icon,
-    required Color iconColor,
+  bool _isWithinSelectedPeriod(Timestamp? timestamp) {
+    if (timestamp == null) return false;
+
+    final date = timestamp.toDate();
+
+    if (_reportType == 'Monthly') {
+      return date.year == _selectedYear &&
+          date.month == _selectedMonth;
+    }
+
+    return date.year == _selectedYear;
+  }
+
+  Widget _summaryCard({
     required String title,
-    required String subtitle,
-    required VoidCallback onTap,
+    required String value,
+    required IconData icon,
+    required Color color,
   }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      color: Colors.white,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 24),
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: color,
+              size: 26,
+            ),
+
+            const SizedBox(height: 8),
+
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                  ],
-                ),
+            ),
+
+            const SizedBox(height: 4),
+
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -84,78 +131,593 @@ class _TellerDashboardState extends State<TellerDashboard> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+          ),
         ],
       ),
+
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          padding: const EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            28,
+          ),
+
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+
+              // HEADER
+
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
+
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 6)),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
                   ],
                 ),
+
                 child: Row(
                   children: [
+
                     Container(
                       padding: const EdgeInsets.all(12),
+
                       decoration: BoxDecoration(
                         color: _accentGold.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.account_balance, color: _accentGold, size: 30),
+
+                      child: const Icon(
+                        Icons.account_balance,
+                        color: _accentGold,
+                        size: 30,
+                      ),
                     ),
+
                     const SizedBox(width: 14),
+
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+
                         children: [
-                          Text('Welcome, ${user?.email ?? 'Teller'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _primaryGreen)),
+
+                          Text(
+                            'Welcome, ${user?.email ?? 'Teller'}',
+
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: _primaryGreen,
+                            ),
+                          ),
+
                           const SizedBox(height: 4),
-                          const Text('Role: TELLER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black54)),
+
+                          const Text(
+                            'Role: TELLER',
+
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black54,
+                            ),
+                          ),
+
                           const SizedBox(height: 4),
-                          const Text('Verify readings, generate bills, and support service requests.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+
+                          const Text(
+                            'Verify readings, generate bills, and support service requests.',
+
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 24),
-              const Text('TASKS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              _buildActionCard(
-                icon: Icons.verified,
-                iconColor: const Color(0xFF2E7D32),
-                title: 'Verify Meter Readings',
-                subtitle: 'Review pending readings and generate official bills.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyMeterReadingsScreen())),
+
+              // FILTER
+
+              Row(
+                children: [
+
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      value: _reportType,
+
+                      decoration: const InputDecoration(
+                        labelText: 'View',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Monthly',
+                          child: Text('Monthly'),
+                        ),
+
+                        DropdownMenuItem(
+                          value: 'Yearly',
+                          child: Text('Yearly'),
+                        ),
+                      ],
+
+                      onChanged: (value) {
+                        setState(() {
+                          _reportType =
+                              value ?? 'Monthly';
+                        });
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  if (_reportType == 'Monthly')
+                    Expanded(
+                      child:
+                          DropdownButtonFormField<int>(
+                        value: _selectedMonth,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText: 'Month',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+
+                        items:
+                            List.generate(12, (index) {
+                          return DropdownMenuItem(
+                            value: index + 1,
+                            child:
+                                Text(_months[index]),
+                          );
+                        }),
+
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedMonth =
+                                value ??
+                                    DateTime.now()
+                                        .month;
+                          });
+                        },
+                      ),
+                    ),
+
+                  if (_reportType == 'Monthly')
+                    const SizedBox(width: 10),
+
+                  Expanded(
+                    child: DropdownButtonFormField<int>(
+                      value: _selectedYear,
+
+                      decoration: const InputDecoration(
+                        labelText: 'Year',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+
+                      items: List.generate(
+                        5,
+                        (index) {
+                          final year =
+                              DateTime.now().year -
+                                  2 +
+                                  index;
+
+                          return DropdownMenuItem(
+                            value: year,
+                            child: Text(
+                              year.toString(),
+                            ),
+                          );
+                        },
+                      ),
+
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedYear =
+                              value ??
+                                  DateTime.now().year;
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
-              _buildActionCard(
-                icon: Icons.assessment,
-                iconColor: const Color(0xFF1976D2),
-                title: 'Generate Reports',
-                subtitle: 'Create monthly and yearly billing summaries.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GenerateReportScreen())),
+
+              const SizedBox(height: 24),
+
+              // BILLS STREAM
+
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('bills')
+                    .snapshots(),
+
+                builder: (context, billSnapshot) {
+
+                  if (!billSnapshot.hasData) {
+                    return const Center(
+                      child:
+                          CircularProgressIndicator(),
+                    );
+                  }
+
+                  final bills =
+                      billSnapshot.data!.docs.where(
+                    (doc) {
+                      final data =
+                          doc.data()
+                              as Map<String, dynamic>;
+
+                      return _isWithinSelectedPeriod(
+                        data['generatedAt']
+                            as Timestamp?,
+                      );
+                    },
+                  ).toList();
+
+                  final totalBills = bills.length;
+
+                  final paidBills = bills.where(
+                    (doc) {
+                      final data =
+                          doc.data()
+                              as Map<String, dynamic>;
+
+                      return data['status']
+                              ?.toString()
+                              .toLowerCase() ==
+                          'paid';
+                    },
+                  ).length;
+
+                  final unpaidBills =
+                      bills.where((doc) {
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    return data['status']
+                            ?.toString()
+                            .toLowerCase() !=
+                        'paid';
+                  }).length;
+
+                  double totalRevenue = 0;
+
+                  for (final doc in bills) {
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    if (data['status']
+                            ?.toString()
+                            .toLowerCase() ==
+                        'paid') {
+                      totalRevenue +=
+                          (data['totalAmount']
+                                      as num? ??
+                                  0)
+                              .toDouble();
+                    }
+                  }
+
+                  return Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+
+                    children: [
+
+                      const Text(
+                        'Bills Summary',
+
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+
+                          _summaryCard(
+                            title: 'Total Bills',
+                            value:
+                                totalBills.toString(),
+                            icon:
+                                Icons.receipt_long,
+                            color: _primaryGreen,
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          _summaryCard(
+                            title: 'Paid',
+                            value:
+                                paidBills.toString(),
+                            icon:
+                                Icons.check_circle,
+                            color: Colors.green,
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          _summaryCard(
+                            title: 'Unpaid',
+                            value:
+                                unpaidBills.toString(),
+                            icon:
+                                Icons.pending_actions,
+                            color: Colors.orange,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Container(
+                        width: double.infinity,
+                        padding:
+                            const EdgeInsets.all(18),
+
+                        decoration: BoxDecoration(
+                          color:
+                              const Color(0xFFE8F5E9),
+                          borderRadius:
+                              BorderRadius.circular(
+                                  14),
+                        ),
+
+                        child: Row(
+                          children: [
+
+                            const Icon(
+                              Icons.payments,
+                              color: _primaryGreen,
+                              size: 30,
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment
+                                      .start,
+
+                              children: [
+
+                                const Text(
+                                  'Total Revenue',
+
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+
+                                Text(
+                                  '₱${totalRevenue.toStringAsFixed(2)}',
+
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                    color:
+                                        _primaryGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-              _buildActionCard(
-                icon: Icons.manage_accounts,
-                iconColor: const Color(0xFFDAA520),
-                title: 'Manage Complaints',
-                subtitle: 'Review and respond to consumer complaints.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ManageComplaintsScreen())),
+
+              const SizedBox(height: 24),
+
+              // COMPLAINTS STREAM
+
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('complaints')
+                    .snapshots(),
+
+                builder:
+                    (context, complaintSnapshot) {
+
+                  if (!complaintSnapshot.hasData) {
+                    return const Center(
+                      child:
+                          CircularProgressIndicator(),
+                    );
+                  }
+
+                  final complaints =
+                      complaintSnapshot.data!.docs
+                          .where((doc) {
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    return _isWithinSelectedPeriod(
+                      data['dateSubmitted']
+                          as Timestamp?,
+                    );
+                  }).toList();
+
+                  final totalComplaints =
+                      complaints.length;
+
+                  final pendingComplaints =
+                      complaints.where((doc) {
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    return data['status']
+                            ?.toString()
+                            .toLowerCase() ==
+                        'pending';
+                  }).length;
+
+                  final resolvedComplaints =
+                      complaints.where((doc) {
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    final status =
+                        data['status']
+                            ?.toString()
+                            .toLowerCase();
+
+                    return status == 'resolved' ||
+                        status == 'closed' ||
+                        status == 'completed';
+                  }).length;
+
+                  return Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+
+                    children: [
+
+                      const Text(
+                        'Complaints Summary',
+
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+
+                          _summaryCard(
+                            title:
+                                'Total Complaints',
+                            value:
+                                totalComplaints
+                                    .toString(),
+                            icon:
+                                Icons.report_problem,
+                            color: Colors.red,
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          _summaryCard(
+                            title: 'Pending',
+                            value:
+                                pendingComplaints
+                                    .toString(),
+                            icon:
+                                Icons.pending,
+                            color: Colors.orange,
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          _summaryCard(
+                            title: 'Resolved',
+                            value:
+                                resolvedComplaints
+                                    .toString(),
+                            icon:
+                                Icons.task_alt,
+                            color: Colors.green,
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
         ),
+      ),
+
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 0,
+
+        onTap: (index) {
+          final destinations = [
+            const TellerDashboard(),
+            const VerifyMeterReadingsScreen(),
+            const GenerateReportScreen(),
+            ManageComplaintsScreen(),
+          ];
+
+          if (index != 0) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    destinations[index],
+              ),
+            );
+          }
+        },
+
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            label: 'Home',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.verified),
+            label: 'Verify',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assessment),
+            label: 'Reports',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.manage_accounts),
+            label: 'Complaints',
+          ),
+        ],
       ),
     );
   }

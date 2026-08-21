@@ -7,14 +7,20 @@ class SubmitComplaintScreen extends StatefulWidget {
   const SubmitComplaintScreen({super.key});
 
   @override
-  State<SubmitComplaintScreen> createState() => _SubmitComplaintScreenState();
+  State<SubmitComplaintScreen> createState() =>
+      _SubmitComplaintScreenState();
 }
 
-class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
-  final ComplaintService _complaintService = ComplaintService();
+class _SubmitComplaintScreenState
+    extends State<SubmitComplaintScreen> {
+  final ComplaintService _complaintService =
+      ComplaintService();
 
-  final TextEditingController _subjectController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _subjectController =
+      TextEditingController();
+
+  final TextEditingController _descriptionController =
+      TextEditingController();
 
   String _complaintType = "Billing";
   bool _isLoading = false;
@@ -62,6 +68,7 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
+          backgroundColor: Colors.green,
           content: Text(
             "Complaint submitted successfully.",
           ),
@@ -76,8 +83,10 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          backgroundColor: Colors.red,
           content: Text(e.toString()),
         ),
       );
@@ -110,122 +119,17 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Consumer's complaints list with responses and status
-            Builder(
-              builder: (context) {
-                final user = FirebaseAuth.instance.currentUser;
-                if (user == null) return const SizedBox.shrink();
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: _complaintService.getConsumerComplaints(user.uid),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
+            // ==========================================
+            // SUBMIT COMPLAINT FORM
+            // ==========================================
 
-                    if (snapshot.hasError) {
-                      return Card(
-                        color: Colors.red[50],
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Text('Error: ${snapshot.error}'),
-                        ),
-                      );
-                    }
-
-                    final docs = snapshot.data?.docs ?? [];
-
-                    if (docs.isEmpty) {
-                      return Card(
-                        color: Colors.grey[50],
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                "Your Complaints",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              SizedBox(height: 8),
-                              Text("You have not submitted any complaints yet."),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Your Complaints",
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        // list of complaints
-                        ...docs.map((d) {
-                          final data = d.data() as Map<String, dynamic>;
-                          final status = (data['status'] ?? '').toString();
-                          final response = (data['response'] ?? '').toString();
-                          final subject = (data['subject'] ?? '').toString();
-                          final submitted = data['dateSubmitted'];
-                          String dateText = '';
-                          if (submitted != null && submitted is Timestamp) {
-                            dateText = submitted.toDate().toLocal().toString().split('.').first;
-                          }
-
-                          final resolved = status.toLowerCase() == 'resolved' ||
-                              status.toLowerCase() == 'closed' ||
-                              status.toLowerCase() == 'completed';
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          subject,
-                                          style: const TextStyle(fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(dateText, style: const TextStyle(color: Colors.grey)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Text('Status: $status', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                      const SizedBox(width: 8),
-                                      if (resolved)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(color: Colors.green[100], borderRadius: BorderRadius.circular(12)),
-                                          child: const Text('Resolved', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text('Teller Response:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text(response.isNotEmpty ? response : 'No response yet.'),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ],
-                    );
-                  },
-                );
-              },
+            const Text(
+              "Submit a Complaint",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
 
             const SizedBox(height: 20),
@@ -263,7 +167,12 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
               ),
-              items: _complaintTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
+              items: _complaintTypes.map((type) {
+                return DropdownMenuItem<String>(
+                  value: type,
+                  child: Text(type),
+                );
+              }).toList(),
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
@@ -299,21 +208,351 @@ class _SubmitComplaintScreenState extends State<SubmitComplaintScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitComplaint,
+                onPressed:
+                    _isLoading ? null : _submitComplaint,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFD32F2F),
+                  backgroundColor:
+                      const Color(0xFFD32F2F),
+                  foregroundColor: Colors.white,
                 ),
                 child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const SizedBox(
+                        width: 25,
+                        height: 25,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 3,
+                        ),
+                      )
                     : const Text(
                         "SUBMIT COMPLAINT",
                         style: TextStyle(
-                          color: Colors.white,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
               ),
             ),
+
+            // ==========================================
+            // DIVIDER
+            // ==========================================
+
+            const SizedBox(height: 35),
+
+            const Divider(
+              thickness: 1,
+            ),
+
+            const SizedBox(height: 20),
+
+            // ==========================================
+            // CONSUMER COMPLAINT LIST
+            // ==========================================
+
+            const Text(
+              "Your Complaints",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            Builder(
+              builder: (context) {
+                final user =
+                    FirebaseAuth.instance.currentUser;
+
+                if (user == null) {
+                  return const SizedBox.shrink();
+                }
+
+                return StreamBuilder<QuerySnapshot>(
+                  stream: _complaintService
+                      .getConsumerComplaints(user.uid),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+
+                    if (snapshot.hasError) {
+                      return Card(
+                        color: Colors.red.shade50,
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.all(12),
+                          child: Text(
+                            "Error: ${snapshot.error}",
+                          ),
+                        ),
+                      );
+                    }
+
+                    final docs =
+                        snapshot.data?.docs ?? [];
+
+                    if (docs.isEmpty) {
+                      return Card(
+                        color: Colors.grey.shade100,
+                        child: const Padding(
+                          padding: EdgeInsets.all(15),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  "You have not submitted any complaints yet.",
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      children: docs.map((d) {
+                        final data =
+                            d.data()
+                                as Map<String, dynamic>;
+
+                        final status =
+                            (data['status'] ?? 'Pending')
+                                .toString();
+
+                        final response =
+                            (data['response'] ?? '')
+                                .toString();
+
+                        final subject =
+                            (data['subject'] ?? '')
+                                .toString();
+
+                        final complaintType =
+                            (data['complaintType'] ?? '')
+                                .toString();
+
+                        final description =
+                            (data['description'] ?? '')
+                                .toString();
+
+                        final submitted =
+                            data['dateSubmitted'];
+
+                        String dateText = '';
+
+                        if (submitted is Timestamp) {
+                          final date =
+                              submitted.toDate();
+
+                          dateText =
+                              "${date.month}/${date.day}/${date.year}";
+                        }
+
+                        final statusLower =
+                            status.toLowerCase();
+
+                        final isResolved =
+                            statusLower == 'resolved' ||
+                                statusLower == 'closed' ||
+                                statusLower == 'completed';
+
+                        final Color statusColor;
+
+                        if (isResolved) {
+                          statusColor = Colors.green;
+                        } else if (statusLower ==
+                            'pending') {
+                          statusColor = Colors.orange;
+                        } else {
+                          statusColor = Colors.blue;
+                        }
+
+                        return Card(
+                          elevation: 3,
+                          margin:
+                              const EdgeInsets.only(
+                            bottom: 15,
+                          ),
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.all(15),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment
+                                      .start,
+                              children: [
+
+                                // SUBJECT AND DATE
+
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        subject.isEmpty
+                                            ? "No Subject"
+                                            : subject,
+                                        style:
+                                            const TextStyle(
+                                          fontSize: 17,
+                                          fontWeight:
+                                              FontWeight
+                                                  .bold,
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      width: 10,
+                                    ),
+
+                                    Text(
+                                      dateText,
+                                      style:
+                                          const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(
+                                  height: 10,
+                                ),
+
+                                // COMPLAINT TYPE
+
+                                Text(
+                                  "Type: $complaintType",
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight.w500,
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  height: 5,
+                                ),
+
+                                // DESCRIPTION
+
+                                Text(
+                                  description,
+                                ),
+
+                                const SizedBox(
+                                  height: 12,
+                                ),
+
+                                // STATUS
+
+                                Row(
+                                  children: [
+                                    const Text(
+                                      "Status: ",
+                                      style: TextStyle(
+                                        fontWeight:
+                                            FontWeight
+                                                .bold,
+                                      ),
+                                    ),
+
+                                    Container(
+                                      padding:
+                                          const EdgeInsets
+                                              .symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      decoration:
+                                          BoxDecoration(
+                                        color: statusColor
+                                            .withOpacity(
+                                                0.15),
+                                        borderRadius:
+                                            BorderRadius
+                                                .circular(
+                                          20,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        status,
+                                        style: TextStyle(
+                                          color:
+                                              statusColor,
+                                          fontWeight:
+                                              FontWeight
+                                                  .bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(
+                                  height: 15,
+                                ),
+
+                                const Divider(),
+
+                                const SizedBox(
+                                  height: 8,
+                                ),
+
+                                // TELLER RESPONSE
+
+                                const Text(
+                                  "Teller Response",
+                                  style: TextStyle(
+                                    fontWeight:
+                                        FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  height: 5,
+                                ),
+
+                                Text(
+                                  response.isNotEmpty
+                                      ? response
+                                      : "No response yet.",
+                                  style: TextStyle(
+                                    color:
+                                        response.isNotEmpty
+                                            ? Colors.black87
+                                            : Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                );
+              },
+            ),
+
+            const SizedBox(height: 30),
           ],
         ),
       ),

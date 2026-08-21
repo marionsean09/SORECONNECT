@@ -30,24 +30,6 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
     }
   }
 
-  Widget _buildActionCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        onTap: onTap,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -104,57 +86,45 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              const Text('MONITORING', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              _buildActionCard(
-                icon: Icons.receipt_long,
-                iconColor: const Color(0xFF2E7D32),
-                title: 'Monitor Bills',
-                subtitle: 'Review billing transactions and payment records.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonitorBillsScreen())),
-              ),
-              _buildActionCard(
-                icon: Icons.report_problem,
-                iconColor: const Color(0xFFEF6C00),
-                title: 'Monitor Complaints',
-                subtitle: 'Track and follow up on consumer complaints.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonitorComplaintsScreen())),
-              ),
-              _buildActionCard(
-                icon: Icons.bar_chart,
-                iconColor: const Color(0xFF1976D2),
-                title: 'Monitor Reports',
-                subtitle: 'Review monthly and yearly summaries.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MonitorReportsScreen())),
-              ),
-              const SizedBox(height: 20),
-              const Text('OPERATIONS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen, letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              _buildActionCard(
-                icon: Icons.electric_bolt,
-                iconColor: const Color(0xFFDAA520),
-                title: 'Rate Management',
-                subtitle: 'Adjust the official electricity rate.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RateManagementScreen())),
-              ),
-              _buildActionCard(
-                icon: Icons.campaign,
-                iconColor: const Color(0xFF1565C0),
-                title: 'Post Announcements',
-                subtitle: 'Share updates with consumers.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PostAnnouncementScreen())),
-              ),
-              _buildActionCard(
-                icon: Icons.announcement,
-                iconColor: _primaryGreen,
-                title: 'View Announcements',
-                subtitle: 'Read all published announcements.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen())),
-              ),
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 0,
+        onTap: (index) {
+          if (index == 0) return;
+          if (index == 4) {
+            showModalBottomSheet<void>(
+              context: context,
+              builder: (context) => SafeArea(
+                child: Wrap(
+                  children: [
+                    ListTile(leading: const Icon(Icons.electric_bolt), title: const Text('Rate Management'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const RateManagementScreen())); }),
+                    ListTile(leading: const Icon(Icons.campaign), title: const Text('Post Announcements'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const PostAnnouncementScreen())); }),
+                    ListTile(leading: const Icon(Icons.announcement), title: const Text('View Announcements'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen())); }),
+                  ],
+                ),
+              ),
+            );
+            return;
+          }
+          final destinations = [
+            const DirectorDashboard(),
+            const MonitorBillsScreen(),
+            const MonitorComplaintsScreen(),
+            const MonitorReportsScreen(),
+          ];
+          Navigator.push(context, MaterialPageRoute(builder: (_) => destinations[index]));
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Bills'),
+          BottomNavigationBarItem(icon: Icon(Icons.report_problem), label: 'Complaints'),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Reports'),
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
+        ],
       ),
     );
   }

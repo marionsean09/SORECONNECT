@@ -17,8 +17,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -40,14 +38,17 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      final auth = FirebaseAuth.instance;
+      final firestore = FirebaseFirestore.instance;
+
       // Sign in
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      UserCredential userCredential = await auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       // Get user role from Firestore
-      DocumentSnapshot userDoc = await _firestore
+      DocumentSnapshot userDoc = await firestore
           .collection('users')
           .doc(userCredential.user!.uid)
           .get();

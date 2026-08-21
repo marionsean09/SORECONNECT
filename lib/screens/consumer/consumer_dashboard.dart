@@ -71,62 +71,32 @@ class ConsumerDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text('SERVICES', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20), letterSpacing: 1.2)),
-              const SizedBox(height: 12),
-              _buildActionCard(
-                context: context,
-                icon: Icons.receipt_long,
-                iconColor: const Color(0xFF2E7D32),
-                title: 'View Bills',
-                subtitle: 'Check your billing history and due dates.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConsumerBillScreen())),
-              ),
-              _buildActionCard(
-                context: context,
-                icon: Icons.pie_chart,
-                iconColor: const Color(0xFF6A1B9A),
-                title: 'SORECO 1 Collections Report',
-                subtitle: 'View monthly and yearly collected totals.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConsumerReportScreen())),
-              ),
-              _buildActionCard(
-                context: context,
-                icon: Icons.report_problem,
-                iconColor: const Color(0xFFEF6C00),
-                title: 'Submit Complaint & Track',
-                subtitle: 'Report issues and track service concerns.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubmitComplaintScreen())),
-              ),
-              _buildActionCard(
-                context: context,
-                icon: Icons.campaign,
-                iconColor: const Color(0xFF1565C0),
-                title: 'Announcements',
-                subtitle: 'Stay updated on notices and news.',
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewAnnouncementsScreen())),
-              ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildActionCard({
-    required BuildContext context,
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        leading: Icon(icon, color: iconColor),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        onTap: onTap,
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 0,
+        onTap: (index) {
+          final destinations = [
+            const ConsumerDashboard(),
+            const ConsumerBillScreen(),
+            const ConsumerReportScreen(),
+            const SubmitComplaintScreen(),
+            const ViewAnnouncementsScreen(),
+          ];
+          if (index != 0) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => destinations[index]));
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'Bills'),
+          BottomNavigationBarItem(icon: Icon(Icons.pie_chart), label: 'Reports'),
+          BottomNavigationBarItem(icon: Icon(Icons.report_problem), label: 'Complaints'),
+          BottomNavigationBarItem(icon: Icon(Icons.campaign), label: 'News'),
+        ],
       ),
     );
   }

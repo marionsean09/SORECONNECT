@@ -53,7 +53,12 @@ class _TellerDashboardState extends State<TellerDashboard> {
     }
   }
 
-  bool _isWithinSelectedPeriod(Timestamp? timestamp) {
+  // ============================================================
+  // BILL PERIOD FILTER
+  // Uses generatedAt
+  // ============================================================
+
+  bool _isBillWithinSelectedPeriod(Timestamp? timestamp) {
     if (timestamp == null) return false;
 
     final date = timestamp.toDate();
@@ -65,6 +70,63 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
     return date.year == _selectedYear;
   }
+
+  // ============================================================
+  // GET COMPLAINT DATE
+  //
+  // Supports:
+  // createdAt
+  // dateSubmitted
+  // submittedAt
+  // ============================================================
+
+  DateTime? _getComplaintDate(
+    Map<String, dynamic> data,
+  ) {
+    final value =
+        data['createdAt'] ??
+        data['dateSubmitted'] ??
+        data['submittedAt'];
+
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // COMPLAINT PERIOD FILTER
+  // ============================================================
+
+  bool _isComplaintWithinSelectedPeriod(
+    Map<String, dynamic> data,
+  ) {
+    final date = _getComplaintDate(data);
+
+    if (date == null) {
+      return false;
+    }
+
+    if (_reportType == 'Monthly') {
+      return date.year == _selectedYear &&
+          date.month == _selectedMonth;
+    }
+
+    return date.year == _selectedYear;
+  }
+
+  // ============================================================
+  // SUMMARY CARD
+  // ============================================================
 
   Widget _summaryCard({
     required String title,
@@ -151,7 +213,9 @@ class _TellerDashboardState extends State<TellerDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
+              // ==================================================
               // HEADER
+              // ==================================================
 
               Container(
                 width: double.infinity,
@@ -181,7 +245,7 @@ class _TellerDashboardState extends State<TellerDashboard> {
                       ),
 
                       child: const Icon(
-                        Icons.account_balance,
+                        Icons.person,
                         color: _accentGold,
                         size: 30,
                       ),
@@ -237,7 +301,9 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
               const SizedBox(height: 24),
 
-              // FILTER
+              // ==================================================
+              // MONTHLY / YEARLY FILTER
+              // ==================================================
 
               Row(
                 children: [
@@ -277,32 +343,32 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
                   if (_reportType == 'Monthly')
                     Expanded(
-                      child:
-                          DropdownButtonFormField<int>(
+                      child: DropdownButtonFormField<int>(
                         value: _selectedMonth,
 
-                        decoration:
-                            const InputDecoration(
+                        decoration: const InputDecoration(
                           labelText: 'Month',
                           border: OutlineInputBorder(),
                           isDense: true,
                         ),
 
-                        items:
-                            List.generate(12, (index) {
-                          return DropdownMenuItem(
-                            value: index + 1,
-                            child:
-                                Text(_months[index]),
-                          );
-                        }),
+                        items: List.generate(
+                          12,
+                          (index) {
+                            return DropdownMenuItem(
+                              value: index + 1,
+                              child: Text(
+                                _months[index],
+                              ),
+                            );
+                          },
+                        ),
 
                         onChanged: (value) {
                           setState(() {
                             _selectedMonth =
                                 value ??
-                                    DateTime.now()
-                                        .month;
+                                    DateTime.now().month;
                           });
                         },
                       ),
@@ -352,7 +418,12 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
               const SizedBox(height: 24),
 
+              // ==================================================
               // BILLS STREAM
+              //
+              // TOTAL REVENUE:
+              // ONLY PAID BILLS ARE INCLUDED
+              // ==================================================
 
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
@@ -375,7 +446,7 @@ class _TellerDashboardState extends State<TellerDashboard> {
                           doc.data()
                               as Map<String, dynamic>;
 
-                      return _isWithinSelectedPeriod(
+                      return _isBillWithinSelectedPeriod(
                         data['generatedAt']
                             as Timestamp?,
                       );
@@ -384,30 +455,48 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
                   final totalBills = bills.length;
 
-                  final paidBills = bills.where(
-                    (doc) {
-                      final data =
-                          doc.data()
-                              as Map<String, dynamic>;
+                  // PAID BILLS
 
-                      return data['status']
-                              ?.toString()
-                              .toLowerCase() ==
-                          'paid';
-                    },
-                  ).length;
-
-                  final unpaidBills =
+                  final paidBills =
                       bills.where((doc) {
+
                     final data =
                         doc.data()
                             as Map<String, dynamic>;
 
-                    return data['status']
-                            ?.toString()
-                            .toLowerCase() !=
-                        'paid';
+                    final status =
+                        (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                    return status == 'paid';
+
                   }).length;
+
+                  // UNPAID BILLS
+
+                  final unpaidBills =
+                      bills.where((doc) {
+
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    final status =
+                        (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                    return status != 'paid';
+
+                  }).length;
+
+                  // ============================================
+                  // TOTAL REVENUE
+                  //
+                  // KEEPING YOUR ORIGINAL CORRECT COMPUTATION
+                  // ONLY PAID BILLS ARE INCLUDED
+                  // ============================================
 
                   double totalRevenue = 0;
 
@@ -416,10 +505,12 @@ class _TellerDashboardState extends State<TellerDashboard> {
                         doc.data()
                             as Map<String, dynamic>;
 
-                    if (data['status']
-                            ?.toString()
-                            .toLowerCase() ==
-                        'paid') {
+                    final status =
+                        (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                    if (status == 'paid') {
                       totalRevenue +=
                           (data['totalAmount']
                                       as num? ??
@@ -547,7 +638,13 @@ class _TellerDashboardState extends State<TellerDashboard> {
 
               const SizedBox(height: 24),
 
+              // ==================================================
               // COMPLAINTS STREAM
+              //
+              // PENDING
+              // IN PROGRESS
+              // RESOLVED
+              // ==================================================
 
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
@@ -564,48 +661,95 @@ class _TellerDashboardState extends State<TellerDashboard> {
                     );
                   }
 
+                  // FILTER COMPLAINTS BY SELECTED
+                  // MONTH / YEAR
+
                   final complaints =
                       complaintSnapshot.data!.docs
                           .where((doc) {
+
                     final data =
                         doc.data()
                             as Map<String, dynamic>;
 
-                    return _isWithinSelectedPeriod(
-                      data['dateSubmitted']
-                          as Timestamp?,
+                    return _isComplaintWithinSelectedPeriod(
+                      data,
                     );
+
                   }).toList();
 
                   final totalComplaints =
                       complaints.length;
 
+                  // ============================================
+                  // PENDING COMPLAINTS
+                  // ============================================
+
                   final pendingComplaints =
                       complaints.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
 
-                    return data['status']
-                            ?.toString()
-                            .toLowerCase() ==
-                        'pending';
-                  }).length;
-
-                  final resolvedComplaints =
-                      complaints.where((doc) {
                     final data =
                         doc.data()
                             as Map<String, dynamic>;
 
                     final status =
-                        data['status']
-                            ?.toString()
+                        (data['status'] ?? '')
+                            .toString()
+                            .trim()
                             .toLowerCase();
 
-                    return status == 'resolved' ||
-                        status == 'closed' ||
-                        status == 'completed';
+                    return status == 'pending';
+
+                  }).length;
+
+                  // ============================================
+                  // IN PROGRESS COMPLAINTS
+                  //
+                  // Supports different formats:
+                  // "In Progress"
+                  // "in progress"
+                  // "in_progress"
+                  // "inprogress"
+                  // ============================================
+
+                  final inProgressComplaints =
+                      complaints.where((doc) {
+
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    final status =
+                        (data['status'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
+
+                    return status == 'in progress' ||
+                        status == 'in_progress' ||
+                        status == 'inprogress';
+
+                  }).length;
+
+                  // ============================================
+                  // RESOLVED COMPLAINTS
+                  // ============================================
+
+                  final resolvedComplaints =
+                      complaints.where((doc) {
+
+                    final data =
+                        doc.data()
+                            as Map<String, dynamic>;
+
+                    final status =
+                        (data['status'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
+
+                    return status == 'resolved';
+
                   }).length;
 
                   return Column(
@@ -625,6 +769,11 @@ class _TellerDashboardState extends State<TellerDashboard> {
                       ),
 
                       const SizedBox(height: 12),
+
+                      // ========================================
+                      // FIRST ROW
+                      // TOTAL + PENDING
+                      // ========================================
 
                       Row(
                         children: [
@@ -651,6 +800,28 @@ class _TellerDashboardState extends State<TellerDashboard> {
                                 Icons.pending,
                             color: Colors.orange,
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      // ========================================
+                      // SECOND ROW
+                      // IN PROGRESS + RESOLVED
+                      // ========================================
+
+                      Row(
+                        children: [
+
+                          _summaryCard(
+                            title: 'In Progress',
+                            value:
+                                inProgressComplaints
+                                    .toString(),
+                            icon:
+                                Icons.autorenew,
+                            color: Colors.blue,
+                          ),
 
                           const SizedBox(width: 10),
 
@@ -673,6 +844,10 @@ class _TellerDashboardState extends State<TellerDashboard> {
           ),
         ),
       ),
+
+      // ========================================================
+      // BOTTOM NAVIGATION
+      // ========================================================
 
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,

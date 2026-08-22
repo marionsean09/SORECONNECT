@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import 'package:soreconnect/services/complaint_services.dart';
 
 class SubmitComplaintScreen extends StatefulWidget {
@@ -114,10 +115,13 @@ class _SubmitComplaintScreenState
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
 
             // ==========================================
@@ -167,12 +171,14 @@ class _SubmitComplaintScreenState
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
               ),
+
               items: _complaintTypes.map((type) {
                 return DropdownMenuItem<String>(
                   value: type,
                   child: Text(type),
                 );
               }).toList(),
+
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
@@ -196,6 +202,7 @@ class _SubmitComplaintScreenState
             TextField(
               controller: _descriptionController,
               maxLines: 6,
+
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: "Describe your complaint...",
@@ -207,14 +214,18 @@ class _SubmitComplaintScreenState
             SizedBox(
               width: double.infinity,
               height: 50,
+
               child: ElevatedButton(
                 onPressed:
                     _isLoading ? null : _submitComplaint,
+
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       const Color(0xFFD32F2F),
+
                   foregroundColor: Colors.white,
                 ),
+
                 child: _isLoading
                     ? const SizedBox(
                         width: 25,
@@ -271,7 +282,9 @@ class _SubmitComplaintScreenState
                 return StreamBuilder<QuerySnapshot>(
                   stream: _complaintService
                       .getConsumerComplaints(user.uid),
+
                   builder: (context, snapshot) {
+
                     if (snapshot.connectionState ==
                         ConnectionState.waiting) {
                       return const Center(
@@ -285,9 +298,11 @@ class _SubmitComplaintScreenState
                     if (snapshot.hasError) {
                       return Card(
                         color: Colors.red.shade50,
+
                         child: Padding(
                           padding:
                               const EdgeInsets.all(12),
+
                           child: Text(
                             "Error: ${snapshot.error}",
                           ),
@@ -301,15 +316,19 @@ class _SubmitComplaintScreenState
                     if (docs.isEmpty) {
                       return Card(
                         color: Colors.grey.shade100,
+
                         child: const Padding(
                           padding: EdgeInsets.all(15),
+
                           child: Row(
                             children: [
                               Icon(
                                 Icons.info_outline,
                                 color: Colors.grey,
                               ),
+
                               SizedBox(width: 10),
+
                               Expanded(
                                 child: Text(
                                   "You have not submitted any complaints yet.",
@@ -323,6 +342,7 @@ class _SubmitComplaintScreenState
 
                     return Column(
                       children: docs.map((d) {
+
                         final data =
                             d.data()
                                 as Map<String, dynamic>;
@@ -347,65 +367,118 @@ class _SubmitComplaintScreenState
                             (data['description'] ?? '')
                                 .toString();
 
+                        // ==================================
+                        // SUBMISSION DATE
+                        // ==================================
+
                         final submitted =
-                            data['dateSubmitted'];
+                            data['dateSubmitted'] ??
+                            data['createdAt'];
 
                         String dateText = '';
 
                         if (submitted is Timestamp) {
-                          final date =
-                              submitted.toDate();
-
-                          dateText =
-                              "${date.month}/${date.day}/${date.year}";
+                          dateText = DateFormat(
+                            'MMM dd, yyyy hh:mm a',
+                          ).format(
+                            submitted.toDate(),
+                          );
                         }
+
+                        // ==================================
+                        // RESPONSE DATE
+                        // ==================================
+
+                        final respondedAt =
+                            data['respondedAt'];
+
+                        String respondedDateText = '';
+
+                        if (respondedAt is Timestamp) {
+                          respondedDateText = DateFormat(
+                            'MMM dd, yyyy hh:mm a',
+                          ).format(
+                            respondedAt.toDate(),
+                          );
+                        }
+
+                        // ==================================
+                        // STATUS LOGIC
+                        // ==================================
 
                         final statusLower =
                             status.toLowerCase();
 
                         final isResolved =
                             statusLower == 'resolved' ||
-                                statusLower == 'closed' ||
-                                statusLower == 'completed';
+                            statusLower == 'closed' ||
+                            statusLower == 'completed';
 
-                        final Color statusColor;
+                        final isInProgress =
+                            statusLower == 'in progress' ||
+                            statusLower == 'in-progress' ||
+                            statusLower == 'inprogress';
+
+                        final isPending =
+                            statusLower == 'pending';
+
+                        Color statusColor;
+                        IconData statusIcon;
 
                         if (isResolved) {
                           statusColor = Colors.green;
-                        } else if (statusLower ==
-                            'pending') {
-                          statusColor = Colors.orange;
-                        } else {
+                          statusIcon =
+                              Icons.check_circle;
+                        } else if (isInProgress) {
                           statusColor = Colors.blue;
+                          statusIcon =
+                              Icons.autorenew;
+                        } else if (isPending) {
+                          statusColor = Colors.orange;
+                          statusIcon =
+                              Icons.pending;
+                        } else {
+                          statusColor = Colors.grey;
+                          statusIcon =
+                              Icons.help_outline;
                         }
 
                         return Card(
                           elevation: 3,
+
                           margin:
                               const EdgeInsets.only(
                             bottom: 15,
                           ),
+
                           child: Padding(
                             padding:
                                 const EdgeInsets.all(15),
+
                             child: Column(
                               crossAxisAlignment:
                                   CrossAxisAlignment
                                       .start,
+
                               children: [
 
+                                // ==========================
                                 // SUBJECT AND DATE
+                                // ==========================
 
                                 Row(
                                   crossAxisAlignment:
                                       CrossAxisAlignment
                                           .start,
+
                                   children: [
+
                                     Expanded(
                                       child: Text(
                                         subject.isEmpty
                                             ? "No Subject"
                                             : subject,
+
                                         style:
                                             const TextStyle(
                                           fontSize: 17,
@@ -420,12 +493,19 @@ class _SubmitComplaintScreenState
                                       width: 10,
                                     ),
 
-                                    Text(
-                                      dateText,
-                                      style:
-                                          const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 11,
+                                    Flexible(
+                                      child: Text(
+                                        dateText,
+
+                                        textAlign:
+                                            TextAlign.right,
+
+                                        style:
+                                            const TextStyle(
+                                          color:
+                                              Colors.grey,
+                                          fontSize: 11,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -435,10 +515,13 @@ class _SubmitComplaintScreenState
                                   height: 10,
                                 ),
 
+                                // ==========================
                                 // COMPLAINT TYPE
+                                // ==========================
 
                                 Text(
                                   "Type: $complaintType",
+
                                   style:
                                       const TextStyle(
                                     fontWeight:
@@ -450,7 +533,9 @@ class _SubmitComplaintScreenState
                                   height: 5,
                                 ),
 
+                                // ==========================
                                 // DESCRIPTION
+                                // ==========================
 
                                 Text(
                                   description,
@@ -460,12 +545,16 @@ class _SubmitComplaintScreenState
                                   height: 12,
                                 ),
 
+                                // ==========================
                                 // STATUS
+                                // ==========================
 
                                 Row(
                                   children: [
+
                                     const Text(
                                       "Status: ",
+
                                       style: TextStyle(
                                         fontWeight:
                                             FontWeight
@@ -480,26 +569,52 @@ class _SubmitComplaintScreenState
                                         horizontal: 10,
                                         vertical: 5,
                                       ),
+
                                       decoration:
                                           BoxDecoration(
-                                        color: statusColor
-                                            .withOpacity(
-                                                0.15),
+                                        color:
+                                            statusColor
+                                                .withOpacity(
+                                          0.15,
+                                        ),
+
                                         borderRadius:
                                             BorderRadius
                                                 .circular(
                                           20,
                                         ),
                                       ),
-                                      child: Text(
-                                        status,
-                                        style: TextStyle(
-                                          color:
-                                              statusColor,
-                                          fontWeight:
-                                              FontWeight
-                                                  .bold,
-                                        ),
+
+                                      child: Row(
+                                        mainAxisSize:
+                                            MainAxisSize.min,
+
+                                        children: [
+
+                                          Icon(
+                                            statusIcon,
+                                            color:
+                                                statusColor,
+                                            size: 16,
+                                          ),
+
+                                          const SizedBox(
+                                            width: 5,
+                                          ),
+
+                                          Text(
+                                            status,
+
+                                            style: TextStyle(
+                                              color:
+                                                  statusColor,
+
+                                              fontWeight:
+                                                  FontWeight
+                                                      .bold,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -515,10 +630,13 @@ class _SubmitComplaintScreenState
                                   height: 8,
                                 ),
 
+                                // ==========================
                                 // TELLER RESPONSE
+                                // ==========================
 
                                 const Text(
                                   "Teller Response",
+
                                   style: TextStyle(
                                     fontWeight:
                                         FontWeight.bold,
@@ -534,6 +652,7 @@ class _SubmitComplaintScreenState
                                   response.isNotEmpty
                                       ? response
                                       : "No response yet.",
+
                                   style: TextStyle(
                                     color:
                                         response.isNotEmpty
@@ -541,10 +660,32 @@ class _SubmitComplaintScreenState
                                             : Colors.grey,
                                   ),
                                 ),
+
+                                // ==========================
+                                // RESPONSE DATE
+                                // ==========================
+
+                                if (respondedDateText.isNotEmpty) ...[
+
+                                  const SizedBox(
+                                    height: 8,
+                                  ),
+
+                                  Text(
+                                    "Last updated: $respondedDateText",
+
+                                    style:
+                                        const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
                         );
+
                       }).toList(),
                     );
                   },

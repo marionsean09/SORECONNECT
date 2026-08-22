@@ -2,9 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ComplaintService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
 
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
+
+  // SUBMIT COMPLAINT
   Future<void> submitComplaint({
     required String subject,
     required String complaintType,
@@ -24,13 +28,17 @@ class ComplaintService {
           .get();
 
       if (!userDoc.exists) {
-        throw Exception("Consumer record not found.");
+        throw Exception(
+          "Consumer record not found.",
+        );
       }
 
       final userData = userDoc.data()!;
 
       final complaintRef =
-          _firestore.collection('complaints').doc();
+          _firestore
+              .collection('complaints')
+              .doc();
 
       await complaintRef.set({
         'complaintId': complaintRef.id,
@@ -49,22 +57,32 @@ class ComplaintService {
 
         'description': description,
 
+        // DEFAULT STATUS
         'status': 'Pending',
 
+        // TELLER RESPONSE
         'response': '',
 
-        'createdAt':
-            FieldValue.serverTimestamp(),
-        'dateSubmitted':
-            FieldValue.serverTimestamp(),
+        // TELLER INFORMATION
+        'respondedBy': '',
 
         'respondedAt': null,
+
+        // COMPLAINT DATE
+        'createdAt':
+            FieldValue.serverTimestamp(),
+
+        'dateSubmitted':
+            FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      throw Exception("Failed to submit complaint: $e");
+      throw Exception(
+        "Failed to submit complaint: $e",
+      );
     }
   }
 
+  // GET ALL COMPLAINTS
   Stream<QuerySnapshot> getAllComplaints() {
     return _firestore
         .collection('complaints')
@@ -75,8 +93,10 @@ class ComplaintService {
         .snapshots();
   }
 
+  // GET COMPLAINTS OF CURRENT CONSUMER
   Stream<QuerySnapshot> getConsumerComplaints(
-      String consumerId) {
+    String consumerId,
+  ) {
     return _firestore
         .collection('complaints')
         .where(
@@ -89,20 +109,41 @@ class ComplaintService {
         )
         .snapshots();
   }
-  
+
+  // UPDATE COMPLAINT STATUS AND RESPONSE
   Future<void> updateComplaintStatus({
     required String complaintId,
     required String status,
     required String response,
   }) async {
-    await _firestore
-        .collection('complaints')
-        .doc(complaintId)
-        .update({
-      'status': status,
-      'response': response,
-      'respondedAt':
-          FieldValue.serverTimestamp(),
-    });
+    try {
+      final user = _auth.currentUser;
+
+      await _firestore
+          .collection('complaints')
+          .doc(complaintId)
+          .update({
+        // STATUS:
+        // Pending
+        // In Progress
+        // Resolved
+        'status': status,
+
+        // TELLER RESPONSE
+        'response': response,
+
+        // WHO RESPONDED
+        'respondedBy':
+            user?.email ?? 'Teller',
+
+        // RESPONSE DATE
+        'respondedAt':
+            FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception(
+        "Failed to update complaint: $e",
+      );
+    }
   }
 }

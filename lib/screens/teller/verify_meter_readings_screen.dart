@@ -13,12 +13,94 @@ class VerifyMeterReadingsScreen extends StatefulWidget {
 
 class _VerifyMeterReadingsScreenState
     extends State<VerifyMeterReadingsScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
 
   String? _processingDocId;
 
-  /// Verify the meter reading and generate the official bill
+  // ============================================================
+  // SORT OPTION
+  // ============================================================
+
+  String _sortOption = 'Newest';
+
+  // ============================================================
+  // GET DATE
+  // ============================================================
+
+  DateTime? _getDate(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // GET METER READING DATE
+  // ============================================================
+
+  DateTime _getReadingDate(
+    Map<String, dynamic> data,
+  ) {
+    final date =
+        _getDate(data['recordedAt']) ??
+        _getDate(data['createdAt']) ??
+        _getDate(data['dateCreated']) ??
+        _getDate(data['timestamp']);
+
+    return date ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  // ============================================================
+  // SORT METER READINGS
+  // ============================================================
+
+  List<QueryDocumentSnapshot> _sortReadings(
+    List<QueryDocumentSnapshot> docs,
+  ) {
+    final sortedDocs =
+        List<QueryDocumentSnapshot>.from(docs);
+
+    sortedDocs.sort((a, b) {
+      final dataA =
+          a.data() as Map<String, dynamic>;
+
+      final dataB =
+          b.data() as Map<String, dynamic>;
+
+      final dateA =
+          _getReadingDate(dataA);
+
+      final dateB =
+          _getReadingDate(dataB);
+
+      if (_sortOption == 'Newest') {
+        return dateB.compareTo(dateA);
+      } else {
+        return dateA.compareTo(dateB);
+      }
+    });
+
+    return sortedDocs;
+  }
+
+  // ============================================================
+  // VERIFY READING
+  // ============================================================
+
   Future<void> _verifyReading({
     required DocumentSnapshot readingDoc,
     required double previousReading,
@@ -37,7 +119,9 @@ class _VerifyMeterReadingsScreenState
 
     try {
       final reading =
-          readingDoc.data() as Map<String, dynamic>? ?? {};
+          readingDoc.data()
+              as Map<String, dynamic>? ??
+          {};
 
       final DocumentReference billRef =
           _firestore.collection("bills").doc();
@@ -60,32 +144,19 @@ class _VerifyMeterReadingsScreenState
 
       final Map<String, dynamic> billData = {
         "billId": billRef.id,
-
         "consumerId": consumerId,
-
         "consumerName": consumerName,
-
         "accountNumber": accountNumber,
-
         "previousReading": previousReading,
-
         "currentReading": currentReading,
-
         "consumption": consumption,
-
         "ratePerKwh": ratePerKwh,
-
         "totalAmount": totalAmount,
-
         "billingPeriod": billingPeriod,
-
         "dueDate": Timestamp.fromDate(dueDate),
-
         "status": billStatus.toLowerCase(),
-
         "generatedBy":
             _auth.currentUser?.email ?? "Teller",
-
         "generatedAt":
             FieldValue.serverTimestamp(),
       };
@@ -104,10 +175,8 @@ class _VerifyMeterReadingsScreenState
         readingDoc.reference,
         {
           "status": "Verified",
-
           "verifiedBy":
               _auth.currentUser?.email ?? "Teller",
-
           "verifiedAt":
               FieldValue.serverTimestamp(),
         },
@@ -145,31 +214,39 @@ class _VerifyMeterReadingsScreenState
     }
   }
 
-  /// Open dialog where teller can edit bill details
+  // ============================================================
+  // EDIT BILL DIALOG
+  // ============================================================
+
   Future<void> _showEditBillDialog(
     DocumentSnapshot readingDoc,
   ) async {
     final data =
-        readingDoc.data() as Map<String, dynamic>;
+        readingDoc.data()
+            as Map<String, dynamic>;
 
     final previousReadingController =
         TextEditingController(
-      text: "${data["previousReading"] ?? 0}",
+      text:
+          "${data["previousReading"] ?? 0}",
     );
 
     final currentReadingController =
         TextEditingController(
-      text: "${data["currentReading"] ?? 0}",
+      text:
+          "${data["currentReading"] ?? 0}",
     );
 
     final consumptionController =
         TextEditingController(
-      text: "${data["consumption"] ?? 0}",
+      text:
+          "${data["consumption"] ?? 0}",
     );
 
     final billingPeriodController =
         TextEditingController(
-      text: "${data["billingPeriod"] ?? ""}",
+      text:
+          "${data["billingPeriod"] ?? ""}",
     );
 
     double currentRate =
@@ -214,7 +291,8 @@ class _VerifyMeterReadingsScreenState
             double calculateTotal() {
               final consumption =
                   double.tryParse(
-                        consumptionController.text,
+                        consumptionController
+                            .text,
                       ) ??
                       0;
 
@@ -232,16 +310,17 @@ class _VerifyMeterReadingsScreenState
                 "Edit and Verify Bill",
               ),
 
-              content: SingleChildScrollView(
+              content:
+                  SingleChildScrollView(
                 child: Column(
                   mainAxisSize:
                       MainAxisSize.min,
-
                   children: [
                     Text(
                       data["consumerName"] ??
                           "Unknown Consumer",
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontWeight:
                             FontWeight.bold,
                         fontSize: 18,
@@ -298,13 +377,16 @@ class _VerifyMeterReadingsScreenState
                                 0;
 
                         final consumption =
-                            current - previous;
+                            current -
+                            previous;
 
                         setDialogState(() {
-                          consumptionController.text =
+                          consumptionController
+                                  .text =
                               consumption
                                   .toStringAsFixed(
-                                      2);
+                            2,
+                          );
                         });
                       },
                     ),
@@ -373,7 +455,8 @@ class _VerifyMeterReadingsScreenState
                       height: 12,
                     ),
 
-                    DropdownButtonFormField<String>(
+                    DropdownButtonFormField<
+                        String>(
                       value: selectedStatus,
                       decoration:
                           const InputDecoration(
@@ -399,7 +482,8 @@ class _VerifyMeterReadingsScreenState
                       onChanged: (value) {
                         setDialogState(() {
                           selectedStatus =
-                              value ?? "unpaid";
+                              value ??
+                                  "unpaid";
                         });
                       },
                     ),
@@ -417,7 +501,8 @@ class _VerifyMeterReadingsScreenState
                       subtitle: Text(
                         "${selectedDueDate.month}/${selectedDueDate.day}/${selectedDueDate.year}",
                       ),
-                      trailing: const Icon(
+                      trailing:
+                          const Icon(
                         Icons.calendar_today,
                       ),
                       onTap: () async {
@@ -429,14 +514,16 @@ class _VerifyMeterReadingsScreenState
                           firstDate:
                               DateTime.now(),
                           lastDate:
-                              DateTime.now().add(
+                              DateTime.now()
+                                  .add(
                             const Duration(
                               days: 365,
                             ),
                           ),
                         );
 
-                        if (picked != null) {
+                        if (picked !=
+                            null) {
                           setDialogState(() {
                             selectedDueDate =
                                 picked;
@@ -521,7 +608,8 @@ class _VerifyMeterReadingsScreenState
 
                     final rate =
                         double.tryParse(
-                              rateController.text,
+                              rateController
+                                  .text,
                             ) ??
                             0;
 
@@ -573,27 +661,22 @@ class _VerifyMeterReadingsScreenState
                     );
 
                     await _verifyReading(
-                      readingDoc: readingDoc,
-
+                      readingDoc:
+                          readingDoc,
                       previousReading:
                           previousReading,
-
                       currentReading:
                           currentReading,
-
                       consumption:
                           consumption,
-
-                      ratePerKwh: rate,
-
+                      ratePerKwh:
+                          rate,
                       billingPeriod:
                           billingPeriodController
                               .text
                               .trim(),
-
                       dueDate:
                           selectedDueDate,
-
                       billStatus:
                           selectedStatus,
                     );
@@ -617,6 +700,10 @@ class _VerifyMeterReadingsScreenState
     billingPeriodController.dispose();
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -630,211 +717,394 @@ class _VerifyMeterReadingsScreenState
             Colors.white,
       ),
 
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore
-            .collection("meter_readings")
-            .where(
-              "status",
-              isEqualTo: "Pending",
-            )
-            .orderBy(
-              "recordedAt",
-              descending: true,
-            )
-            .snapshots(),
+      body: Column(
+        children: [
+          // ====================================================
+          // MINIMAL SORT DROPDOWN
+          // ====================================================
 
-        builder: (context, snapshot) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child:
-                  CircularProgressIndicator(),
-            );
-          }
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              8,
+            ),
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding:
-                    const EdgeInsets.all(16),
-                child: Text(
-                  "Error fetching readings:\n${snapshot.error}",
-                  textAlign:
-                      TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          if (!snapshot.hasData ||
-              snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle,
-                    size: 70,
-                    color: Colors.green,
-                  ),
-
-                  SizedBox(height: 15),
-
-                  Text(
-                    "No Pending Meter Readings",
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    "Pending Readings",
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight:
                           FontWeight.bold,
                     ),
                   ),
-                ],
-              ),
-            );
-          }
-
-          final readings =
-              snapshot.data!.docs;
-
-          return ListView.builder(
-            padding:
-                const EdgeInsets.all(15),
-
-            itemCount:
-                readings.length,
-
-            itemBuilder:
-                (context, index) {
-              final readingDoc =
-                  readings[index];
-
-              final data =
-                  readingDoc.data()
-                      as Map<String, dynamic>;
-
-              final isProcessing =
-                  _processingDocId ==
-                      readingDoc.id;
-
-              return Card(
-                elevation: 4,
-
-                margin:
-                    const EdgeInsets.only(
-                  bottom: 15,
                 ),
 
-                child: Padding(
+                Container(
+                  height: 48,
+
                   padding:
-                      const EdgeInsets.all(16),
+                      const EdgeInsets.symmetric(
+                    horizontal: 10,
+                  ),
 
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        Colors.grey.shade100,
 
-                    children: [
-                      Text(
-                        data["consumerName"] ??
-                            "Unknown Consumer",
+                    borderRadius:
+                        BorderRadius.circular(
+                      10,
+                    ),
 
-                        style:
-                            const TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                    border: Border.all(
+                      color:
+                          Colors.grey.shade300,
+                    ),
+                  ),
+
+                  child:
+                      DropdownButtonHideUnderline(
+                    child:
+                        DropdownButton<String>(
+                      value:
+                          _sortOption,
+
+                      icon:
+                          const Icon(
+                        Icons
+                            .keyboard_arrow_down,
+                        size: 20,
+                        color:
+                            Colors.grey,
                       ),
 
-                      const SizedBox(
-                        height: 10,
+                      style:
+                          const TextStyle(
+                        color:
+                            Colors.black87,
+                        fontSize: 13,
+                        fontWeight:
+                            FontWeight.w500,
                       ),
 
-                      Text(
-                        "Account Number: ${data["accountNumber"] ?? "N/A"}",
-                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: "Newest",
+                          child: Row(
+                            mainAxisSize:
+                                MainAxisSize
+                                    .min,
+                            children: [
+                              Icon(
+                                Icons.sort,
+                                size: 18,
+                                color:
+                                    Colors.orange,
+                              ),
 
-                      Text(
-                        "Billing Period: ${data["billingPeriod"] ?? "N/A"}",
-                      ),
+                              SizedBox(
+                                width: 7,
+                              ),
 
-                      const Divider(),
-
-                      Text(
-                        "Previous Reading: ${data["previousReading"] ?? 0} kWh",
-                      ),
-
-                      Text(
-                        "Current Reading: ${data["currentReading"] ?? 0} kWh",
-                      ),
-
-                      Text(
-                        "Consumption: ${data["consumption"] ?? 0} kWh",
-                      ),
-
-                      const SizedBox(
-                        height: 15,
-                      ),
-
-                      SizedBox(
-                        width:
-                            double.infinity,
-
-                        height: 50,
-
-                        child:
-                            ElevatedButton.icon(
-                          onPressed:
-                              _processingDocId !=
-                                      null
-                                  ? null
-                                  : () async {
-                                      await _showEditBillDialog(
-                                        readingDoc,
-                                      );
-                                    },
-
-                          style:
-                              ElevatedButton
-                                  .styleFrom(
-                            backgroundColor:
-                                const Color(
-                              0xFFD32F2F,
-                            ),
-
-                            foregroundColor:
-                                Colors.white,
-                          ),
-
-                          icon: isProcessing
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color:
-                                        Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.edit,
-                                ),
-
-                          label: Text(
-                            isProcessing
-                                ? "VERIFYING..."
-                                : "EDIT & VERIFY BILL",
+                              Text(
+                                "Newest",
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
+
+                        DropdownMenuItem(
+                          value: "Oldest",
+                          child: Row(
+                            mainAxisSize:
+                                MainAxisSize
+                                    .min,
+                            children: [
+                              Icon(
+                                Icons.sort,
+                                size: 18,
+                                color:
+                                    Colors.orange,
+                              ),
+
+                              SizedBox(
+                                width: 7,
+                              ),
+
+                              Text(
+                                "Oldest",
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      onChanged:
+                          (value) {
+                        if (value !=
+                            null) {
+                          setState(() {
+                            _sortOption =
+                                value;
+                          });
+                        }
+                      },
+                    ),
                   ),
                 ),
-              );
-            },
-          );
-        },
+              ],
+            ),
+          ),
+
+          // ====================================================
+          // METER READINGS
+          // ====================================================
+
+          Expanded(
+            child:
+                StreamBuilder<QuerySnapshot>(
+              stream: _firestore
+                  .collection(
+                    "meter_readings",
+                  )
+                  .where(
+                    "status",
+                    isEqualTo: "Pending",
+                  )
+                  .snapshots(),
+
+              builder:
+                  (context, snapshot) {
+                if (snapshot
+                        .connectionState ==
+                    ConnectionState
+                        .waiting) {
+                  return const Center(
+                    child:
+                        CircularProgressIndicator(),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.all(
+                        16,
+                      ),
+                      child: Text(
+                        "Error fetching readings:\n${snapshot.error}",
+                        textAlign:
+                            TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                if (!snapshot.hasData ||
+                    snapshot.data!.docs
+                        .isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .center,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 70,
+                          color:
+                              Colors.green,
+                        ),
+
+                        SizedBox(
+                          height: 15,
+                        ),
+
+                        Text(
+                          "No Pending Meter Readings",
+                          style:
+                              TextStyle(
+                            fontSize: 18,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // ==================================================
+                // SORT READINGS
+                // ==================================================
+
+                final readings =
+                    _sortReadings(
+                  snapshot.data!.docs,
+                );
+
+                return ListView.builder(
+                  padding:
+                      const EdgeInsets.all(
+                    15,
+                  ),
+
+                  itemCount:
+                      readings.length,
+
+                  itemBuilder:
+                      (context, index) {
+                    final readingDoc =
+                        readings[index];
+
+                    final data =
+                        readingDoc.data()
+                            as Map<String,
+                                dynamic>;
+
+                    final isProcessing =
+                        _processingDocId ==
+                            readingDoc.id;
+
+                    return Card(
+                      elevation: 4,
+
+                      margin:
+                          const EdgeInsets.only(
+                        bottom: 15,
+                      ),
+
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.all(
+                          16,
+                        ),
+
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+
+                          children: [
+                            Text(
+                              data["consumerName"] ??
+                                  "Unknown Consumer",
+
+                              style:
+                                  const TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+                              ),
+                            ),
+
+                            const SizedBox(
+                              height: 10,
+                            ),
+
+                            Text(
+                              "Account Number: ${data["accountNumber"] ?? "N/A"}",
+                            ),
+
+                            Text(
+                              "Billing Period: ${data["billingPeriod"] ?? "N/A"}",
+                            ),
+
+                            const Divider(),
+
+                            Text(
+                              "Previous Reading: ${data["previousReading"] ?? 0} kWh",
+                            ),
+
+                            Text(
+                              "Current Reading: ${data["currentReading"] ?? 0} kWh",
+                            ),
+
+                            Text(
+                              "Consumption: ${data["consumption"] ?? 0} kWh",
+                            ),
+
+                            const SizedBox(
+                              height: 15,
+                            ),
+
+                            SizedBox(
+                              width:
+                                  double.infinity,
+
+                              height: 50,
+
+                              child:
+                                  ElevatedButton
+                                      .icon(
+                                onPressed:
+                                    _processingDocId !=
+                                            null
+                                        ? null
+                                        : () async {
+                                            await _showEditBillDialog(
+                                              readingDoc,
+                                            );
+                                          },
+
+                                style:
+                                    ElevatedButton
+                                        .styleFrom(
+                                  backgroundColor:
+                                      const Color(
+                                    0xFFD32F2F,
+                                  ),
+
+                                  foregroundColor:
+                                      Colors.white,
+                                ),
+
+                                icon:
+                                    isProcessing
+                                        ? const SizedBox(
+                                            width:
+                                                18,
+                                            height:
+                                                18,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth:
+                                                  2,
+                                              color:
+                                                  Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons
+                                                .edit,
+                                          ),
+
+                                label: Text(
+                                  isProcessing
+                                      ? "VERIFYING..."
+                                      : "EDIT & VERIFY BILL",
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

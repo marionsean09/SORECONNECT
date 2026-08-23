@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:soreconnect/screens/auth/register_screen.dart';
 import 'package:soreconnect/screens/consumer/consumer_dashboard.dart';
 import 'package:soreconnect/screens/meter_reader/meter_reader_dashboard.dart';
@@ -15,20 +16,53 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  
+  final TextEditingController _emailController =
+      TextEditingController();
+
+  final TextEditingController _passwordController =
+      TextEditingController();
+
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
+
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
   bool _isLoading = false;
   bool _obscurePassword = true;
+
   String? _errorMessage;
 
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
   Future<void> _login() async {
-    if (_emailController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Enter email');
+    final email =
+        _emailController.text.trim();
+
+    final password =
+        _passwordController.text;
+
+    // ==========================================================
+    // VALIDATE EMAIL
+    // ==========================================================
+
+    if (email.isEmpty) {
+      setState(() {
+        _errorMessage = 'Enter your email address.';
+      });
       return;
     }
-    if (_passwordController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Enter password');
+
+    // ==========================================================
+    // VALIDATE PASSWORD
+    // ==========================================================
+
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Enter your password.';
+      });
       return;
     }
 
@@ -38,365 +72,588 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final auth = FirebaseAuth.instance;
-      final firestore = FirebaseFirestore.instance;
+      // ========================================================
+      // SIGN IN USING FIREBASE AUTHENTICATION
+      //
+      // IMPORTANT:
+      // The email here must match the email stored in
+      // Firebase Authentication.
+      // ========================================================
 
-      // Sign in
-      UserCredential userCredential = await auth.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      final UserCredential userCredential =
+          await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
 
-      // Get user role from Firestore
-      DocumentSnapshot userDoc = await firestore
-          .collection('users')
-          .doc(userCredential.user!.uid)
-          .get();
+      final user =
+          userCredential.user;
+
+      if (user == null) {
+        throw Exception(
+          'Unable to retrieve user information.',
+        );
+      }
+
+      // ========================================================
+      // GET USER DATA FROM FIRESTORE
+      // ========================================================
+
+      final DocumentSnapshot userDoc =
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+      // ========================================================
+      // CHECK IF USER DOCUMENT EXISTS
+      // ========================================================
 
       if (!userDoc.exists) {
-        setState(() => _errorMessage = 'User not found');
-        _isLoading = false;
+        await _auth.signOut();
+
+        if (!mounted) return;
+
+        setState(() {
+          _errorMessage =
+              'User profile was not found.';
+        });
+
         return;
       }
 
-      String role = userDoc.get('user_type') ?? 'consumer';
+      // ========================================================
+      // GET USER ROLE
+      // ========================================================
+
+      final userData =
+          userDoc.data()
+              as Map<String, dynamic>;
+
+      final String role =
+          (userData['user_type'] ??
+                  'consumer')
+              .toString()
+              .toLowerCase()
+              .trim();
 
       if (!mounted) return;
 
-      // Navigate based on role
-      if (role == 'consumer') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const ConsumerDashboard()),
-        );
-      } else if (role == 'meter_reader') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MeterReaderDashboard()),
-        );
-      } else if (role == 'teller') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const TellerDashboard()),
-        );
-      } else if (role == 'director') {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DirectorDashboard()),
-        );
-      } else {
-        setState(() => _errorMessage = 'Invalid role: $role');
+      // ========================================================
+      // NAVIGATE BASED ON ROLE
+      // ========================================================
+
+      switch (role) {
+        case 'consumer':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  const ConsumerDashboard(),
+            ),
+          );
+          break;
+
+        case 'meter_reader':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  const MeterReaderDashboard(),
+            ),
+          );
+          break;
+
+        case 'teller':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  const TellerDashboard(),
+            ),
+          );
+          break;
+
+        case 'director':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  const DirectorDashboard(),
+            ),
+          );
+          break;
+
+        default:
+          await _auth.signOut();
+
+          setState(() {
+            _errorMessage =
+                'Invalid user role: $role';
+          });
       }
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') {
-        _errorMessage = 'No user found';
-      } else if (e.code == 'wrong-password') {
-        _errorMessage = 'Wrong password';
-      } else {
-        _errorMessage = e.message;
+    }
+
+    // ==========================================================
+    // FIREBASE AUTHENTICATION ERRORS
+    // ==========================================================
+
+    on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      String message;
+
+      switch (e.code) {
+        case 'invalid-email':
+          message =
+              'Please enter a valid email address.';
+          break;
+
+        case 'user-not-found':
+          message =
+              'No account found with this email.';
+          break;
+
+        case 'wrong-password':
+        case 'invalid-credential':
+          message =
+              'Incorrect email or password.';
+          break;
+
+        case 'user-disabled':
+          message =
+              'This account has been disabled.';
+          break;
+
+        case 'too-many-requests':
+          message =
+              'Too many login attempts. Please try again later.';
+          break;
+
+        case 'network-request-failed':
+          message =
+              'Network error. Please check your internet connection.';
+          break;
+
+        default:
+          message =
+              e.message ??
+                  'Login failed. Please try again.';
       }
-    } catch (e) {
-      _errorMessage = e.toString();
-    } finally {
-      setState(() => _isLoading = false);
+
+      setState(() {
+        _errorMessage = message;
+      });
+    }
+
+    // ==========================================================
+    // OTHER ERRORS
+    // ==========================================================
+
+    catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage =
+            'An error occurred: $e';
+      });
+    }
+
+    // ==========================================================
+    // STOP LOADING
+    // ==========================================================
+
+    finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  // ============================================================
+  // DISPOSE CONTROLLERS
+  // ============================================================
+
   @override
-Widget build(BuildContext context) {
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
 
-  return Scaffold(
+    super.dispose();
+  }
 
-    body: Container(
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
 
-      width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
 
-      decoration: const BoxDecoration(
-
-        gradient: LinearGradient(
-
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-
-          colors: [
-
-            Color(0xFFD50000), // RED
-            Color(0xFFFFC107), // YELLOW
-          ],
+            colors: [
+              Color(0xFFD50000),
+              Color(0xFFFFC107),
+            ],
+          ),
         ),
-      ),
 
-      child: Center(
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.all(24),
 
-        child: SingleChildScrollView(
+            child: Container(
+              padding:
+                  const EdgeInsets.all(25),
 
-          padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color:
+                    Colors.white.withOpacity(0.95),
 
-          child: Container(
+                borderRadius:
+                    BorderRadius.circular(25),
 
-            padding: const EdgeInsets.all(25),
-
-            decoration: BoxDecoration(
-
-              color: Colors.white.withOpacity(0.95),
-
-              borderRadius: BorderRadius.circular(25),
-
-              boxShadow: const [
-
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 15,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-
-            child: Column(
-
-              mainAxisSize: MainAxisSize.min,
-
-              children: [
-
-                // LOGO
-                ClipRRect(
-
-                  borderRadius: BorderRadius.circular(20),
-
-                  child: Image.asset(
-                    'assets/soreco_logo.png',
-                    height: 140,
-                    width: 140,
-                    fit: BoxFit.cover,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 15,
+                    offset: Offset(0, 8),
                   ),
-                ),
+                ],
+              ),
 
-                const SizedBox(height: 20),
+              child: Column(
+                mainAxisSize:
+                    MainAxisSize.min,
 
-                // TITLE
-                const Text(
+                children: [
 
-                  "SORECONNECT",
+                  // ==================================================
+                  // LOGO
+                  // ==================================================
 
-                  style: TextStyle(
+                  ClipRRect(
+                    borderRadius:
+                        BorderRadius.circular(20),
 
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFD50000),
-                    letterSpacing: 2,
-                  ),
-                ),
+                    child: Image.asset(
+                      'assets/soreco_logo.png',
 
-                const SizedBox(height: 10),
+                      height: 140,
+                      width: 140,
 
-                const Text(
-
-                  "Sorsogon Electric Cooperative 1",
-
-                  textAlign: TextAlign.center,
-
-                  style: TextStyle(
-
-                    fontSize: 16,
-                    color: Colors.black54,
-                  ),
-                ),
-
-                const SizedBox(height: 35),
-
-                // EMAIL
-                TextField(
-
-                  controller: _emailController,
-
-                  decoration: InputDecoration(
-
-                    labelText: "Email",
-
-                    prefixIcon: const Icon(
-                      Icons.email,
-                      color: Color(0xFFD50000),
-                    ),
-
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-
-                    border: OutlineInputBorder(
-
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-
-                    enabledBorder: OutlineInputBorder(
-
-                      borderRadius: BorderRadius.circular(15),
-
-                      borderSide: const BorderSide(
-                        color: Color.fromARGB(255, 36, 34, 32),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // PASSWORD
-                TextField(
-
-                  controller: _passwordController,
-
-                  obscureText: _obscurePassword,
-
-                  decoration: InputDecoration(
-
-                    labelText: "Password",
-
-                    prefixIcon: const Icon(
-                      Icons.lock,
-                      color: Color(0xFFD50000),
-                    ),
-
-                    suffixIcon: IconButton(
-
-                      icon: Icon(
-
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-
-                        color: Colors.orange,
-                      ),
-
-                      onPressed: () {
-
-                        setState(() {
-
-                          _obscurePassword =
-                              !_obscurePassword;
-                        });
-                      },
-                    ),
-
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-
-                    border: OutlineInputBorder(
-
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-
-                    enabledBorder: OutlineInputBorder(
-
-                      borderRadius: BorderRadius.circular(15),
-
-                      borderSide: const BorderSide(
-                        color: Color.fromARGB(255, 20, 19, 19),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // ERROR
-                if (_errorMessage != null)
-
-                  Padding(
-
-                    padding: const EdgeInsets.only(
-                      bottom: 15,
-                    ),
-
-                    child: Text(
-
-                      _errorMessage!,
-
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      fit: BoxFit.cover,
                     ),
                   ),
 
-                // LOGIN BUTTON
-                SizedBox(
-
-                  width: double.infinity,
-                  height: 55,
-
-                  child: ElevatedButton(
-
-                    onPressed:
-                        _isLoading ? null : _login,
-
-                    style: ElevatedButton.styleFrom(
-
-                      backgroundColor:
-                          const Color(0xFFD50000),
-
-                      foregroundColor: Colors.white,
-
-                      shape: RoundedRectangleBorder(
-
-                        borderRadius:
-                            BorderRadius.circular(15),
-                      ),
-                    ),
-
-                    child: _isLoading
-
-                        ? const CircularProgressIndicator(
-                            color: Colors.white,
-                          )
-
-                        : const Text(
-
-                            "LOGIN",
-
-                            style: TextStyle(
-
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                  const SizedBox(
+                    height: 20,
                   ),
-                ),
 
-                const SizedBox(height: 15),
+                  // ==================================================
+                  // TITLE
+                  // ==================================================
 
-                // REGISTER
-                TextButton(
-
-                  onPressed: () {
-
-                    Navigator.push(
-
-                      context,
-
-                      MaterialPageRoute(
-
-                        builder: (_) =>
-                            const RegisterScreen(),
-                      ),
-                    );
-                  },
-
-                  child: const Text(
-
-                    "Create Consumer Account",
+                  const Text(
+                    'SORECONNECT',
 
                     style: TextStyle(
-
-                      color: Color(0xFFD50000),
-                      fontWeight: FontWeight.bold,
+                      fontSize: 32,
+                      fontWeight:
+                          FontWeight.bold,
+                      color:
+                          Color(0xFFD50000),
+                      letterSpacing: 2,
                     ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(
+                    height: 10,
+                  ),
+
+                  const Text(
+                    'Sorsogon Electric Cooperative 1',
+
+                    textAlign:
+                        TextAlign.center,
+
+                    style: TextStyle(
+                      fontSize: 16,
+                      color:
+                          Colors.black54,
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 35,
+                  ),
+
+                  // ==================================================
+                  // EMAIL
+                  // ==================================================
+
+                  TextField(
+                    controller:
+                        _emailController,
+
+                    keyboardType:
+                        TextInputType.emailAddress,
+
+                    textInputAction:
+                        TextInputAction.next,
+
+                    decoration:
+                        InputDecoration(
+                      labelText: 'Email',
+
+                      prefixIcon:
+                          const Icon(
+                        Icons.email,
+                        color:
+                            Color(0xFFD50000),
+                      ),
+
+                      filled: true,
+
+                      fillColor:
+                          Colors.grey.shade100,
+
+                      border:
+                          OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
+                        ),
+                      ),
+
+                      enabledBorder:
+                          OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
+                        ),
+
+                        borderSide:
+                            const BorderSide(
+                          color: Color.fromARGB(
+                            255,
+                            36,
+                            34,
+                            32,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
+                  // ==================================================
+                  // PASSWORD
+                  // ==================================================
+
+                  TextField(
+                    controller:
+                        _passwordController,
+
+                    obscureText:
+                        _obscurePassword,
+
+                    onSubmitted: (_) {
+                      if (!_isLoading) {
+                        _login();
+                      }
+                    },
+
+                    decoration:
+                        InputDecoration(
+                      labelText: 'Password',
+
+                      prefixIcon:
+                          const Icon(
+                        Icons.lock,
+                        color:
+                            Color(0xFFD50000),
+                      ),
+
+                      suffixIcon:
+                          IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+
+                          color:
+                              Colors.orange,
+                        ),
+
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword =
+                                !_obscurePassword;
+                          });
+                        },
+                      ),
+
+                      filled: true,
+
+                      fillColor:
+                          Colors.grey.shade100,
+
+                      border:
+                          OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
+                        ),
+                      ),
+
+                      enabledBorder:
+                          OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
+                        ),
+
+                        borderSide:
+                            const BorderSide(
+                          color: Color.fromARGB(
+                            255,
+                            20,
+                            19,
+                            19,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
+                  // ==================================================
+                  // ERROR MESSAGE
+                  // ==================================================
+
+                  if (_errorMessage != null)
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(
+                        bottom: 15,
+                      ),
+
+                      child: Text(
+                        _errorMessage!,
+
+                        textAlign:
+                            TextAlign.center,
+
+                        style:
+                            const TextStyle(
+                          color: Colors.red,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                  // ==================================================
+                  // LOGIN BUTTON
+                  // ==================================================
+
+                  SizedBox(
+                    width:
+                        double.infinity,
+
+                    height: 55,
+
+                    child: ElevatedButton(
+                      onPressed:
+                          _isLoading
+                              ? null
+                              : _login,
+
+                      style:
+                          ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(
+                          0xFFD50000,
+                        ),
+
+                        foregroundColor:
+                            Colors.white,
+
+                        shape:
+                            RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            15,
+                          ),
+                        ),
+                      ),
+
+                      child: _isLoading
+                          ? const CircularProgressIndicator(
+                              color:
+                                  Colors.white,
+                            )
+                          : const Text(
+                              'LOGIN',
+
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(
+                    height: 15,
+                  ),
+
+                  // ==================================================
+                  // REGISTER
+                  // ==================================================
+
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const RegisterScreen(),
+                        ),
+                      );
+                    },
+
+                    child: const Text(
+                      'Create Consumer Account',
+
+                      style: TextStyle(
+                        color:
+                            Color(0xFFD50000),
+
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 }

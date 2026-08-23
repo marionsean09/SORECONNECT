@@ -5,13 +5,10 @@ class MonitorBillsScreen extends StatefulWidget {
   const MonitorBillsScreen({super.key});
 
   @override
-  State<MonitorBillsScreen> createState() =>
-      _MonitorBillsScreenState();
+  State<MonitorBillsScreen> createState() => _MonitorBillsScreenState();
 }
 
-class _MonitorBillsScreenState
-    extends State<MonitorBillsScreen> {
-
+class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   // ============================================================
   // SORT OPTION
   // ============================================================
@@ -57,8 +54,7 @@ class _MonitorBillsScreenState
         _getDate(data['dateGenerated']) ??
         _getDate(data['timestamp']);
 
-    return date ??
-        DateTime.fromMillisecondsSinceEpoch(0);
+    return date ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   // ============================================================
@@ -73,8 +69,7 @@ class _MonitorBillsScreenState
     }
 
     return docs.where((doc) {
-      final data =
-          doc.data() as Map<String, dynamic>;
+      final data = doc.data() as Map<String, dynamic>;
 
       final status =
           (data['status'] ?? 'unpaid')
@@ -104,17 +99,11 @@ class _MonitorBillsScreenState
         List<QueryDocumentSnapshot>.from(docs);
 
     sortedDocs.sort((a, b) {
-      final dataA =
-          a.data() as Map<String, dynamic>;
+      final dataA = a.data() as Map<String, dynamic>;
+      final dataB = b.data() as Map<String, dynamic>;
 
-      final dataB =
-          b.data() as Map<String, dynamic>;
-
-      final dateA =
-          _getBillDate(dataA);
-
-      final dateB =
-          _getBillDate(dataB);
+      final dateA = _getBillDate(dataA);
+      final dateB = _getBillDate(dataB);
 
       if (_sortOption == 'Newest') {
         return dateB.compareTo(dateA);
@@ -156,41 +145,31 @@ class _MonitorBillsScreenState
         title: const Text(
           'Monitor Bills',
         ),
-        backgroundColor:
-            Theme.of(context).primaryColor,
+        backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
       ),
 
       body: Column(
         children: [
-
           // ====================================================
           // SORT + PAYMENT FILTER
           // ====================================================
 
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               16,
               12,
               16,
               8,
             ),
-
             child: Row(
               children: [
-
-                // ==============================================
-                // TITLE
-                // ==============================================
-
                 const Expanded(
                   child: Text(
-                    'All Bills',
+                    'Bills',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -201,123 +180,65 @@ class _MonitorBillsScreenState
 
                 Container(
                   height: 48,
-
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                   ),
-
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.grey.shade100,
-
-                    borderRadius:
-                        BorderRadius.circular(
-                      10,
-                    ),
-
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color:
-                          Colors.grey.shade300,
+                      color: Colors.grey.shade300,
                     ),
                   ),
-
-                  child:
-                      DropdownButtonHideUnderline(
-                    child:
-                        DropdownButton<String>(
-                      value:
-                          _sortOption,
-
-                      icon:
-                          const Icon(
-                        Icons
-                            .keyboard_arrow_down,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _sortOption,
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down,
                         size: 20,
-                        color:
-                            Colors.grey,
+                        color: Colors.grey,
                       ),
-
-                      style:
-                          const TextStyle(
-                        color:
-                            Colors.black87,
+                      style: const TextStyle(
+                        color: Colors.black87,
                         fontSize: 13,
-                        fontWeight:
-                            FontWeight.w500,
+                        fontWeight: FontWeight.w500,
                       ),
-
                       items: const [
-
-                        // ========================================
-                        // NEWEST
-                        // ========================================
-
                         DropdownMenuItem(
                           value: 'Newest',
-
                           child: Row(
-                            mainAxisSize:
-                                MainAxisSize.min,
-
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.sort,
                                 size: 18,
-                                color:
-                                    Colors.orange,
+                                color: Colors.orange,
                               ),
-
-                              SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'Newest',
-                              ),
+                              SizedBox(width: 7),
+                              Text('Newest'),
                             ],
                           ),
                         ),
-
-                        // ========================================
-                        // OLDEST
-                        // ========================================
-
                         DropdownMenuItem(
                           value: 'Oldest',
-
                           child: Row(
-                            mainAxisSize:
-                                MainAxisSize.min,
-
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.sort,
                                 size: 18,
-                                color:
-                                    Colors.orange,
+                                color: Colors.orange,
                               ),
-
-                              SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'Oldest',
-                              ),
+                              SizedBox(width: 7),
+                              Text('Oldest'),
                             ],
                           ),
                         ),
                       ],
-
-                      onChanged:
-                          (value) {
-                        if (value !=
-                            null) {
+                      onChanged: (value) {
+                        if (value != null) {
                           setState(() {
-                            _sortOption =
-                                value;
+                            _sortOption = value;
                           });
                         }
                       },
@@ -325,9 +246,7 @@ class _MonitorBillsScreenState
                   ),
                 ),
 
-                const SizedBox(
-                  width: 8,
-                ),
+                const SizedBox(width: 8),
 
                 // ==============================================
                 // PAYMENT FILTER
@@ -335,156 +254,80 @@ class _MonitorBillsScreenState
 
                 Container(
                   height: 48,
-
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                   ),
-
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.grey.shade100,
-
-                    borderRadius:
-                        BorderRadius.circular(
-                      10,
-                    ),
-
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color:
-                          Colors.grey.shade300,
+                      color: Colors.grey.shade300,
                     ),
                   ),
-
-                  child:
-                      DropdownButtonHideUnderline(
-                    child:
-                        DropdownButton<String>(
-                      value:
-                          _paymentFilter,
-
-                      icon:
-                          const Icon(
-                        Icons
-                            .keyboard_arrow_down,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _paymentFilter,
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down,
                         size: 20,
-                        color:
-                            Colors.grey,
+                        color: Colors.grey,
                       ),
-
-                      style:
-                          const TextStyle(
-                        color:
-                            Colors.black87,
+                      style: const TextStyle(
+                        color: Colors.black87,
                         fontSize: 13,
-                        fontWeight:
-                            FontWeight.w500,
+                        fontWeight: FontWeight.w500,
                       ),
-
                       items: const [
-
-                        // ========================================
-                        // ALL
-                        // ========================================
-
                         DropdownMenuItem(
                           value: 'All',
-
                           child: Row(
-                            mainAxisSize:
-                                MainAxisSize.min,
-
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons
-                                    .receipt_long,
+                                Icons.receipt_long,
                                 size: 18,
-                                color:
-                                    Colors.orange,
+                                color: Colors.orange,
                               ),
-
-                              SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'All',
-                              ),
+                              SizedBox(width: 7),
+                              Text('All'),
                             ],
                           ),
                         ),
-
-                        // ========================================
-                        // PAID
-                        // ========================================
-
                         DropdownMenuItem(
                           value: 'Paid',
-
                           child: Row(
-                            mainAxisSize:
-                                MainAxisSize.min,
-
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons
-                                    .check_circle,
+                                Icons.check_circle,
                                 size: 18,
-                                color:
-                                    Colors.green,
+                                color: Colors.green,
                               ),
-
-                              SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'Paid',
-                              ),
+                              SizedBox(width: 7),
+                              Text('Paid'),
                             ],
                           ),
                         ),
-
-                        // ========================================
-                        // UNPAID
-                        // ========================================
-
                         DropdownMenuItem(
                           value: 'Unpaid',
-
                           child: Row(
-                            mainAxisSize:
-                                MainAxisSize.min,
-
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                Icons
-                                    .pending,
+                                Icons.pending,
                                 size: 18,
-                                color:
-                                    Colors.red,
+                                color: Colors.red,
                               ),
-
-                              SizedBox(
-                                width: 7,
-                              ),
-
-                              Text(
-                                'Unpaid',
-                              ),
+                              SizedBox(width: 7),
+                              Text('Unpaid'),
                             ],
                           ),
                         ),
                       ],
-
-                      onChanged:
-                          (value) {
-                        if (value !=
-                            null) {
+                      onChanged: (value) {
+                        if (value != null) {
                           setState(() {
-                            _paymentFilter =
-                                value;
+                            _paymentFilter = value;
                           });
                         }
                       },
@@ -500,36 +343,17 @@ class _MonitorBillsScreenState
           // ====================================================
 
           Expanded(
-            child:
-                StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore
-                      .instance
-                      .collection(
-                    'bills',
-                  )
-                      .snapshots(),
-
-              builder:
-                  (context, snapshot) {
-
-                // ==============================================
-                // LOADING
-                // ==============================================
-
-                if (snapshot
-                        .connectionState ==
-                    ConnectionState
-                        .waiting) {
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('bills')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return const Center(
-                    child:
-                        CircularProgressIndicator(),
+                    child: CircularProgressIndicator(),
                   );
                 }
-
-                // ==============================================
-                // ERROR
-                // ==============================================
 
                 if (snapshot.hasError) {
                   return Center(
@@ -539,134 +363,77 @@ class _MonitorBillsScreenState
                   );
                 }
 
-                // ==============================================
-                // NO DATA
-                // ==============================================
-
                 if (!snapshot.hasData ||
-                    snapshot.data!.docs
-                        .isEmpty) {
+                    snapshot.data!.docs.isEmpty) {
                   return const Center(
-                    child: Text(
-                      'No bills found',
-                    ),
+                    child: Text('No bills found'),
                   );
                 }
 
-                // ==============================================
-                // FILTER
-                // ==============================================
-
                 final filteredBills =
-                    _filterBills(
-                  snapshot.data!.docs,
-                );
+                    _filterBills(snapshot.data!.docs);
 
-                // ==============================================
-                // SORT
-                // ==============================================
-
-                final bills =
-                    _sortBills(
-                  filteredBills,
-                );
-
-                // ==============================================
-                // EMPTY AFTER FILTER
-                // ==============================================
+                final bills = _sortBills(filteredBills);
 
                 if (bills.isEmpty) {
                   return Center(
                     child: Text(
-                      _paymentFilter ==
-                              'Paid'
+                      _paymentFilter == 'Paid'
                           ? 'No paid bills found'
-                          : _paymentFilter ==
-                                  'Unpaid'
+                          : _paymentFilter == 'Unpaid'
                               ? 'No unpaid bills found'
                               : 'No bills found',
                     ),
                   );
                 }
 
-                // ==============================================
-                // LIST
-                // ==============================================
-
                 return ListView.builder(
-                  padding:
-                      const EdgeInsets.fromLTRB(
+                  padding: const EdgeInsets.fromLTRB(
                     16,
                     8,
                     16,
                     16,
                   ),
-
-                  itemCount:
-                      bills.length,
-
-                  itemBuilder:
-                      (context, index) {
-
+                  itemCount: bills.length,
+                  itemBuilder: (context, index) {
                     final data =
-                        bills[index]
-                            .data()
-                            as Map<String,
-                                dynamic>;
-
-                    // ==========================================
-                    // PAYMENT STATUS
-                    // ==========================================
+                        bills[index].data()
+                            as Map<String, dynamic>;
 
                     final isPaid =
-                        (data['status'] ??
-                                'unpaid')
+                        (data['status'] ?? 'unpaid')
                             .toString()
                             .toLowerCase() ==
                             'paid';
 
                     final statusText =
-                        _getPaymentStatus(
-                      data,
-                    );
+                        _getPaymentStatus(data);
 
                     // ==========================================
                     // TOTAL AMOUNT
                     // ==========================================
 
-                    final amount =
-                        data['totalAmount'];
+                    final amount = data['totalAmount'];
 
-                    double totalAmount =
-                        0.0;
+                    double totalAmount = 0.0;
 
-                    if (amount
-                        is num) {
+                    if (amount is num) {
+                      totalAmount = amount.toDouble();
+                    } else if (amount is String) {
                       totalAmount =
-                          amount.toDouble();
-                    } else if (amount
-                        is String) {
-                      totalAmount =
-                          double.tryParse(
-                                amount,
-                              ) ??
-                              0.0;
+                          double.tryParse(amount) ?? 0.0;
                     }
 
                     // ==========================================
                     // BILL DATE
                     // ==========================================
 
-                    final billDate =
-                        _getBillDate(
-                      data,
-                    );
+                    final billDate = _getBillDate(data);
 
                     String dateText =
                         'Date not available';
 
-                    if (billDate
-                        .millisecondsSinceEpoch >
+                    if (billDate.millisecondsSinceEpoch >
                         0) {
                       dateText =
                           '${billDate.month.toString().padLeft(2, '0')}/'
@@ -674,184 +441,151 @@ class _MonitorBillsScreenState
                           '${billDate.year}';
                     }
 
+                    // ==========================================
+                    // BILL CARD
+                    // ==========================================
+
                     return Card(
-                      margin:
-                          const EdgeInsets.only(
+                      margin: const EdgeInsets.only(
                         bottom: 12,
                       ),
-
                       child: Padding(
-                        padding:
-                            const EdgeInsets.all(
-                          12,
-                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            // ==================================
+                            // STATUS ICON
+                            // ==================================
 
-                        child: ListTile(
-                          contentPadding:
-                              EdgeInsets.zero,
-
-                          // ========================================
-                          // BILL ICON
-                          // ========================================
-
-                          leading:
-                              Icon(
-                            isPaid
-                                ? Icons
-                                    .check_circle
-                                : Icons
-                                    .pending,
-
-                            color: isPaid
-                                ? Colors
-                                    .green
-                                : Colors
-                                    .orange,
-
-                            size: 32,
-                          ),
-
-                          // ========================================
-                          // CONSUMER
-                          // ========================================
-
-                          title:
-                              Text(
-                            data['consumerName'] ??
-                                'Unknown',
-
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-
-                          // ========================================
-                          // BILL INFORMATION
-                          // ========================================
-
-                          subtitle:
-                              Padding(
-                            padding:
-                                const EdgeInsets
-                                    .only(
-                              top: 5,
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(
+                                top: 4,
+                              ),
+                              child: Icon(
+                                isPaid
+                                    ? Icons.check_circle
+                                    : Icons.pending,
+                                color: isPaid
+                                    ? Colors.green
+                                    : Colors.orange,
+                                size: 32,
+                              ),
                             ),
 
-                            child:
-                                Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
+                            const SizedBox(width: 12),
 
-                              children: [
+                            // ==================================
+                            // BILL INFORMATION
+                            // ==================================
 
-                                Text(
-                                  'Account: ${data['accountNumber'] ?? 'N/A'}',
-                                ),
-
-                                const SizedBox(
-                                  height: 3,
-                                ),
-
-                                Text(
-                                  'Period: ${data['billingPeriod'] ?? 'N/A'}',
-                                ),
-
-                                const SizedBox(
-                                  height: 3,
-                                ),
-
-                                Text(
-                                  'Generated: $dateText',
-                                  style:
-                                      const TextStyle(
-                                    color:
-                                        Colors.grey,
-                                    fontSize:
-                                        12,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    data['consumerName'] ??
+                                        'Unknown',
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                ),
-                              ],
+
+                                  const SizedBox(height: 8),
+
+                                  Text(
+                                    'Account: ${data['accountNumber'] ?? 'N/A'}',
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  Text(
+                                    'Period: ${data['billingPeriod'] ?? 'N/A'}',
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  Text(
+                                    'Generated: $dateText',
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
 
-                          // ========================================
-                          // AMOUNT + STATUS
-                          // ========================================
+                            const SizedBox(width: 12),
 
-                          trailing:
-                              Column(
-                            mainAxisAlignment:
-                                MainAxisAlignment
-                                    .center,
+                            // ==================================
+                            // AMOUNT + STATUS
+                            // ==================================
 
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .end,
-
-                            children: [
-
-                              Text(
-                                '₱${totalAmount.toStringAsFixed(2)}',
-
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight.bold,
-                                  fontSize:
-                                      16,
-                                ),
-                              ),
-
-                              const SizedBox(
-                                height: 5,
-                              ),
-
-                              Container(
-                                padding:
-                                    const EdgeInsets
-                                        .symmetric(
-                                  horizontal:
-                                      8,
-                                  vertical:
-                                      3,
-                                ),
-
-                                decoration:
-                                    BoxDecoration(
-                                  color: isPaid
-                                      ? Colors
-                                          .green
-                                      : Colors
-                                          .red,
-
-                                  borderRadius:
-                                      BorderRadius
-                                          .circular(
-                                    5,
+                            SizedBox(
+                              width: 105,
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    '₱${totalAmount.toStringAsFixed(2)}',
+                                    maxLines: 1,
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                ),
 
-                                child:
-                                    Text(
-                                  statusText,
+                                  const SizedBox(height: 10),
 
-                                  style:
-                                      const TextStyle(
-                                    color:
-                                        Colors.white,
-                                    fontSize:
-                                        10,
-                                    fontWeight:
-                                        FontWeight.bold,
+                                  Container(
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isPaid
+                                          ? Colors.green
+                                          : Colors.red,
+                                      borderRadius:
+                                          BorderRadius.circular(5),
+                                    ),
+                                    child: Text(
+                                      statusText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight:
+                                            FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     );

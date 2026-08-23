@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:soreconnect/data/sorsogon_address_data.dart';
+
 import 'package:soreconnect/screens/consumer/consumer_bill_screen.dart';
 import 'package:soreconnect/screens/consumer/consumer_report_screen.dart';
 import 'package:soreconnect/screens/complaints/submit_complaint_screen.dart';
@@ -16,59 +18,65 @@ class ConsumerDashboard extends StatefulWidget {
 }
 
 class _ConsumerDashboardState extends State<ConsumerDashboard> {
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
 
   int selectedMonth = DateTime.now().month;
   int selectedYear = DateTime.now().year;
 
-  // ================================================================
+  // ============================================================
+  // THEME COLORS
+  // ============================================================
+
+  static const orange = Color(0xFFFFA000);
+  static const background = Color(0xFFF5F7F5);
+
+  // ============================================================
   // PROFILE CONTROLLERS
-  // ================================================================
+  // ============================================================
 
-  final TextEditingController _fullNameController =
-      TextEditingController();
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _accountNumberController = TextEditingController();
+  final _contactNumberController = TextEditingController();
 
-  final TextEditingController _emailController =
-      TextEditingController();
+  // ============================================================
+  // ADDRESS
+  // ============================================================
 
-  final TextEditingController _accountNumberController =
-      TextEditingController();
+  String? _selectedMunicipality;
+  String? _selectedBarangay;
 
-  final TextEditingController _contactNumberController =
-      TextEditingController();
-
-  final TextEditingController _addressController =
-      TextEditingController();
+  // ============================================================
+  // PROFILE STATE
+  // ============================================================
 
   bool _profileExpanded = false;
   bool _editingProfile = false;
   bool _savingProfile = false;
-
   bool _profileLoaded = false;
 
-  // ================================================================
+  // ============================================================
   // LOGOUT
-  // ================================================================
+  // ============================================================
 
-  Future<void> _logout(BuildContext context) async {
+  Future<void> _logout() async {
     await _auth.signOut();
 
-    if (context.mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
-      );
-    }
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+      (_) => false,
+    );
   }
 
-  // ================================================================
-  // MONTH NAME
-  // ================================================================
+  // ============================================================
+  // HELPERS
+  // ============================================================
 
   String _monthName(int month) {
     const months = [
@@ -89,78 +97,96 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     return months[month - 1];
   }
 
-  // ================================================================
-  // AMOUNT
-  // ================================================================
-
   double _getAmount(Map<String, dynamic> data) {
     final value = data['totalAmount'];
-
-    if (value == null) {
-      return 0;
-    }
 
     if (value is num) {
       return value.toDouble();
     }
 
-    return double.tryParse(value.toString()) ?? 0;
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
   }
-
-  // ================================================================
-  // PAID STATUS
-  // ================================================================
 
   bool _isPaid(Map<String, dynamic> data) {
-    final status =
-        data['status']?.toString().toLowerCase().trim() ?? '';
-
-    return status == 'paid';
+    return data['status']
+            ?.toString()
+            .toLowerCase()
+            .trim() ==
+        'paid';
   }
 
-  // ================================================================
+  void _showMessage(
+    String message,
+    Color color,
+  ) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ============================================================
+  // ADDRESS HELPERS
+  // ============================================================
+
+  List<String> get _municipalities {
+    return getSorsogonSecondDistrictMunicipalities();
+  }
+
+  List<String> get _barangays {
+    return getBarangaysForMunicipality(
+      _selectedMunicipality,
+    );
+  }
+
+  // ============================================================
+  // BUILD COMPLETE ADDRESS
+  // ============================================================
+
+  String _buildAddress() {
+    if (_selectedMunicipality == null ||
+        _selectedBarangay == null) {
+      return '';
+    }
+
+    return buildSorsogonAddress(
+      municipality: _selectedMunicipality!,
+      barangay: _selectedBarangay!,
+    );
+  }
+
+  // ============================================================
   // LOAD PROFILE
-  // ================================================================
+  // ============================================================
 
   Future<void> _loadProfile() async {
     final user = _auth.currentUser;
 
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     try {
-      final document = await _firestore
+      final doc = await _firestore
           .collection('users')
           .doc(user.uid)
           .get();
 
-      if (!document.exists) {
-        // Use Firebase Auth email as fallback.
-        _fullNameController.text = '';
-        _emailController.text = user.email ?? '';
-        _accountNumberController.text = '';
-        _contactNumberController.text = '';
-        _addressController.text = '';
-
-        if (mounted) {
-          setState(() {
-            _profileLoaded = true;
-          });
-        }
-
-        return;
-      }
-
-      final data = document.data() ?? {};
+      final data = doc.data() ?? {};
 
       _fullNameController.text =
           data['full_name']?.toString() ?? '';
 
       _emailController.text =
-          data['email']?.toString() ??
-              user.email ??
-              '';
+          data['email']?.toString().trim().isNotEmpty == true
+              ? data['email'].toString()
+              : user.email ?? '';
 
       _accountNumberController.text =
           data['accountNumber']?.toString() ?? '';
@@ -168,42 +194,139 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       _contactNumberController.text =
           data['contactNumber']?.toString() ?? '';
 
-      _addressController.text =
-          data['address']?.toString() ?? '';
+      // ========================================================
+      // LOAD MUNICIPALITY
+      // ========================================================
+
+      String? municipality =
+          data['municipality']?.toString();
+
+      if (municipality != null &&
+          !_municipalities.contains(municipality)) {
+        municipality = null;
+      }
+
+      // ========================================================
+      // LOAD BARANGAY
+      // ========================================================
+
+      String? barangay =
+          data['barangay']?.toString();
+
+      if (municipality != null) {
+        final availableBarangays =
+            getBarangaysForMunicipality(
+          municipality,
+        );
+
+        if (!availableBarangays.contains(barangay)) {
+          barangay = null;
+        }
+      } else {
+        barangay = null;
+      }
+
+      // ========================================================
+      // FALLBACK:
+      // TRY TO READ OLD ADDRESS FIELD
+      // ========================================================
+
+      if (municipality == null ||
+          barangay == null) {
+        final oldAddress =
+            data['address']?.toString() ?? '';
+
+        _parseOldAddress(oldAddress);
+
+        if (municipality == null) {
+          municipality = _selectedMunicipality;
+        }
+
+        if (barangay == null) {
+          barangay = _selectedBarangay;
+        }
+      }
 
       if (mounted) {
         setState(() {
+          _selectedMunicipality = municipality;
+          _selectedBarangay = barangay;
           _profileLoaded = true;
         });
       }
     } catch (e) {
-      debugPrint('Error loading profile: $e');
+      debugPrint(
+        'Error loading profile: $e',
+      );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Unable to load profile information.\n$e',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (!mounted) return;
+
+      setState(() {
+        _profileLoaded = true;
+      });
+
+      _showMessage(
+        'Unable to load profile information.',
+        Colors.red,
+      );
+    }
+  }
+
+  // ============================================================
+  // PARSE OLD ADDRESS
+  // ============================================================
+
+  void _parseOldAddress(String address) {
+    if (address.trim().isEmpty) {
+      return;
+    }
+
+    final parts = address
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (parts.length < 2) {
+      return;
+    }
+
+    final possibleBarangay = parts[0];
+    final possibleMunicipality = parts[1];
+
+    if (_municipalities.contains(
+      possibleMunicipality,
+    )) {
+      final barangays =
+          getBarangaysForMunicipality(
+        possibleMunicipality,
+      );
+
+      if (barangays.contains(
+        possibleBarangay,
+      )) {
+        _selectedMunicipality =
+            possibleMunicipality;
+
+        _selectedBarangay =
+            possibleBarangay;
       }
     }
   }
 
-  // ================================================================
+  // ============================================================
   // SAVE PROFILE
-  // ================================================================
+  // ============================================================
 
   Future<void> _saveProfile() async {
     final user = _auth.currentUser;
 
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
-    // Basic validation
+    // ========================================================
+    // BASIC VALIDATION
+    // ========================================================
+
     if (_fullNameController.text.trim().isEmpty) {
       _showMessage(
         'Full name is required.',
@@ -228,9 +351,60 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       return;
     }
 
-    if (_addressController.text.trim().isEmpty) {
+    // ========================================================
+    // ADDRESS VALIDATION
+    // ========================================================
+
+    if (_selectedMunicipality == null) {
       _showMessage(
-        'Address is required.',
+        'Please select your municipality.',
+        Colors.red,
+      );
+      return;
+    }
+
+    if (_selectedBarangay == null) {
+      _showMessage(
+        'Please select your barangay.',
+        Colors.red,
+      );
+      return;
+    }
+
+    if (!isValidSorsogonSecondDistrictMunicipality(
+      _selectedMunicipality!,
+    )) {
+      _showMessage(
+        'Selected municipality is not part of Sorsogon 2nd District.',
+        Colors.red,
+      );
+      return;
+    }
+
+    if (!isValidBarangayForMunicipality(
+      municipality: _selectedMunicipality!,
+      barangay: _selectedBarangay!,
+    )) {
+      _showMessage(
+        'Selected barangay does not belong to the selected municipality.',
+        Colors.red,
+      );
+      return;
+    }
+
+    final address = _buildAddress();
+
+    if (address.isEmpty) {
+      _showMessage(
+        'Please complete your address.',
+        Colors.red,
+      );
+      return;
+    }
+
+    if (_emailController.text.trim().isEmpty) {
+      _showMessage(
+        'Email is required.',
         Colors.red,
       );
       return;
@@ -241,151 +415,110 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     });
 
     try {
-      final newEmail =
-          _emailController.text.trim();
-
-      final oldEmail =
-          user.email?.trim() ?? '';
-
-      // ============================================================
-      // UPDATE FIRESTORE PROFILE
-      // ============================================================
-
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .update({
-        'full_name':
-            _fullNameController.text.trim(),
+          .set(
+        {
+          'full_name':
+              _fullNameController.text.trim(),
 
-        'email':
-            newEmail,
+          'email':
+              _emailController.text.trim(),
 
-        'accountNumber':
-            _accountNumberController.text.trim(),
+          'accountNumber':
+              _accountNumberController.text.trim(),
 
-        'contactNumber':
-            _contactNumberController.text.trim(),
+          'contactNumber':
+              _contactNumberController.text.trim(),
 
-        'address':
-            _addressController.text.trim(),
+          // ==================================================
+          // NEW STRUCTURED ADDRESS
+          // ==================================================
 
-        'uid':
-            user.uid,
+          'province': sorsogonProvince,
 
-        'user_type':
-            'consumer',
+          'district': sorsogonSecondDistrict,
+
+          'municipality':
+              _selectedMunicipality,
+
+          'barangay':
+              _selectedBarangay,
+
+          // ==================================================
+          // COMPLETE READABLE ADDRESS
+          // ==================================================
+
+          'address': address,
+
+          'uid': user.uid,
+
+          'user_type': 'consumer',
+
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _editingProfile = false;
+        _savingProfile = false;
       });
 
-      // ============================================================
-      // UPDATE FIREBASE AUTH EMAIL
-      // ============================================================
-      //
-      // Firebase may require recent authentication when
-      // changing an email address.
-      //
-      // We only attempt this if the email was actually changed.
-      // ============================================================
-
-      if (newEmail.isNotEmpty &&
-          newEmail != oldEmail) {
-        try {
-          await user.verifyBeforeUpdateEmail(
-            newEmail,
-          );
-        } on FirebaseAuthException catch (e) {
-          if (mounted) {
-            setState(() {
-              _savingProfile = false;
-            });
-          }
-
-          _showMessage(
-            e.message ??
-                'Firebase requires recent authentication before changing the email.',
-            Colors.red,
-          );
-
-          return;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _editingProfile = false;
-          _savingProfile = false;
-        });
-      }
-
       _showMessage(
-        newEmail != oldEmail
-            ? 'Profile saved. Please verify your new email address.'
-            : 'Profile information updated successfully.',
+        'Profile updated successfully.',
         Colors.green,
       );
     } catch (e) {
-      debugPrint('Error saving profile: $e');
+      debugPrint(
+        'Error saving profile: $e',
+      );
 
-      if (mounted) {
-        setState(() {
-          _savingProfile = false;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _savingProfile = false;
+      });
 
       _showMessage(
-        'Unable to save profile information.\n$e',
+        'Unable to update profile information.',
         Colors.red,
       );
     }
   }
 
-  // ================================================================
-  // MESSAGE
-  // ================================================================
-
-  void _showMessage(
-    String message,
-    Color color,
-  ) {
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // ================================================================
+  // ============================================================
   // PROFILE FIELD
-  // ================================================================
+  // ============================================================
 
   Widget _profileField({
     required String label,
-    required String value,
     required IconData icon,
-    TextEditingController? controller,
+    required TextEditingController controller,
     bool enabled = false,
+    TextInputType? keyboardType,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(
+        bottom: 12,
+      ),
       child: TextField(
         controller: controller,
         enabled: enabled,
+        keyboardType: keyboardType,
         style: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
         decoration: InputDecoration(
           labelText: label,
-          hintText: value,
           prefixIcon: Icon(
             icon,
-            color: const Color(0xFF1B5E20),
+            color: orange,
             size: 21,
           ),
           filled: true,
@@ -400,32 +533,32 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           border: OutlineInputBorder(
             borderRadius:
                 BorderRadius.circular(12),
-            borderSide:
-                BorderSide.none,
+            borderSide: BorderSide.none,
           ),
-          enabledBorder: OutlineInputBorder(
+          enabledBorder:
+              OutlineInputBorder(
             borderRadius:
                 BorderRadius.circular(12),
-            borderSide:
-                BorderSide(
+            borderSide: BorderSide(
               color: Colors.grey.shade200,
             ),
           ),
-          focusedBorder: OutlineInputBorder(
+          disabledBorder:
+              OutlineInputBorder(
+            borderRadius:
+                BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: Colors.grey.shade200,
+            ),
+          ),
+          focusedBorder:
+              OutlineInputBorder(
             borderRadius:
                 BorderRadius.circular(12),
             borderSide:
                 const BorderSide(
-              color: Color(0xFF1B5E20),
+              color: orange,
               width: 1.5,
-            ),
-          ),
-          disabledBorder: OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(12),
-            borderSide:
-                BorderSide(
-              color: Colors.grey.shade200,
             ),
           ),
         ),
@@ -433,15 +566,246 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     );
   }
 
-  // ================================================================
+  // ============================================================
+  // ADDRESS DROPDOWN FIELD
+  // ============================================================
+
+  Widget _addressDropdown({
+    required String label,
+    required IconData icon,
+    required String? value,
+    required List<String> items,
+    required ValueChanged<String?>? onChanged,
+    bool enabled = true,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(
+        bottom: 12,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+      ),
+      decoration: BoxDecoration(
+        color: enabled
+            ? Colors.white
+            : const Color(0xFFF5F7F5),
+        borderRadius:
+            BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          icon: const Icon(
+            Icons.keyboard_arrow_down,
+            color: orange,
+          ),
+          hint: Row(
+            children: [
+              Icon(
+                icon,
+                color: orange,
+                size: 21,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.black54,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          selectedItemBuilder:
+              (context) {
+            return items.map(
+              (item) {
+                return Row(
+                  children: [
+                    Icon(
+                      icon,
+                      color: orange,
+                      size: 21,
+                    ),
+                    const SizedBox(
+                      width: 12,
+                    ),
+                    Expanded(
+                      child: Text(
+                        item,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              FontWeight.w500,
+                          color:
+                              Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ).toList();
+          },
+          items: items.map(
+            (item) {
+              return DropdownMenuItem<String>(
+                value: item,
+                child: Text(
+                  item,
+                  style:
+                      const TextStyle(
+                    fontSize: 14,
+                  ),
+                ),
+              );
+            },
+          ).toList(),
+          onChanged:
+              enabled ? onChanged : null,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // ADDRESS SECTION
+  // ============================================================
+
+  Widget _addressSection() {
+    final address =
+        _buildAddress();
+
+    return Column(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        // ======================================================
+        // MUNICIPALITY
+        // ======================================================
+
+        _addressDropdown(
+          label: 'Select Municipality',
+          icon: Icons.location_city_outlined,
+          value: _selectedMunicipality,
+          items: _municipalities,
+          enabled: _editingProfile,
+          onChanged: (value) {
+            setState(() {
+              _selectedMunicipality = value;
+
+              // Reset barangay whenever
+              // municipality changes.
+              _selectedBarangay = null;
+            });
+          },
+        ),
+
+        // ======================================================
+        // BARANGAY
+        // ======================================================
+
+        _addressDropdown(
+          label: _selectedMunicipality == null
+              ? 'Select municipality first'
+              : 'Select Barangay',
+          icon: Icons.location_on_outlined,
+          value: _selectedBarangay,
+          items: _barangays,
+          enabled:
+              _editingProfile &&
+              _selectedMunicipality != null,
+          onChanged: (value) {
+            setState(() {
+              _selectedBarangay = value;
+            });
+          },
+        ),
+
+        // ======================================================
+        // ADDRESS PREVIEW
+        // ======================================================
+
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(
+            bottom: 12,
+          ),
+          padding:
+              const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F7F5),
+            borderRadius:
+                BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.grey.shade200,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.home_outlined,
+                color: orange,
+                size: 21,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Complete Address',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      address.isNotEmpty
+                          ? address
+                          : 'Select municipality and barangay',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight:
+                            FontWeight.w500,
+                        color: address.isNotEmpty
+                            ? Colors.black87
+                            : Colors.black38,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
   // PROFILE DROPDOWN
-  // ================================================================
+  // ============================================================
 
   Widget _profileDropdown(User user) {
     if (!_profileLoaded) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(
+          20,
+        ),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius:
@@ -449,7 +813,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         ),
         child: const Center(
           child: CircularProgressIndicator(
-            color: Color(0xFF1B5E20),
+            color: orange,
           ),
         ),
       );
@@ -460,21 +824,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           const Duration(milliseconds: 250),
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient:
-            const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFE1A533),
-            Color(0xFFEAAA08),
-          ],
-        ),
+        color: orange,
         borderRadius:
             BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFEAAA08)
-                .withOpacity(0.20),
+            color:
+                orange.withOpacity(.25),
             blurRadius: 15,
             offset:
                 const Offset(0, 7),
@@ -483,9 +839,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       ),
       child: Column(
         children: [
-          // ==========================================================
-          // CLICKABLE HEADER
-          // ==========================================================
+          // ======================================================
+          // PROFILE HEADER
+          // ======================================================
 
           InkWell(
             borderRadius:
@@ -507,30 +863,32 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.all(12),
+                        const EdgeInsets.all(
+                      12,
+                    ),
                     decoration:
                         BoxDecoration(
                       color: Colors.white
-                          .withOpacity(0.16),
+                          .withOpacity(.18),
                       borderRadius:
                           BorderRadius.circular(
                         14,
                       ),
                     ),
-                    child:
-                        const Icon(
+                    child: const Icon(
                       Icons.person_outline,
                       color: Colors.white,
                       size: 30,
                     ),
                   ),
-
-                  const SizedBox(width: 14),
-
+                  const SizedBox(
+                    width: 14,
+                  ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         Text(
                           _fullNameController
@@ -552,9 +910,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             color: Colors.white,
                           ),
                         ),
-
-                        const SizedBox(height: 4),
-
+                        const SizedBox(
+                          height: 4,
+                        ),
                         Text(
                           _accountNumberController
                                   .text
@@ -574,22 +932,16 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       ],
                     ),
                   ),
-
-                  // ==================================================
-                  // DROPDOWN ARROW
-                  // ==================================================
-
                   AnimatedRotation(
                     turns:
                         _profileExpanded
-                            ? 0.5
+                            ? .5
                             : 0,
                     duration:
                         const Duration(
                       milliseconds: 250,
                     ),
-                    child:
-                        const Icon(
+                    child: const Icon(
                       Icons
                           .keyboard_arrow_down,
                       color: Colors.white,
@@ -601,9 +953,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             ),
           ),
 
-          // ==========================================================
-          // EXPANDED PROFILE
-          // ==========================================================
+          // ======================================================
+          // PROFILE DETAILS
+          // ======================================================
 
           if (_profileExpanded)
             Container(
@@ -617,7 +969,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               ),
               child: Container(
                 padding:
-                    const EdgeInsets.all(16),
+                    const EdgeInsets.all(
+                  16,
+                ),
                 decoration:
                     BoxDecoration(
                   color: Colors.white,
@@ -628,24 +982,24 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                 ),
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
-                    // =================================================
-                    // PROFILE TITLE
-                    // =================================================
+                    // ==================================================
+                    // HEADER
+                    // ==================================================
 
                     Row(
                       children: [
                         const Icon(
                           Icons
                               .account_circle_outlined,
-                          color:
-                              Color(0xFF1B5E20),
+                          color: Colors.black,
                           size: 22,
                         ),
-
-                        const SizedBox(width: 8),
-
+                        const SizedBox(
+                          width: 8,
+                        ),
                         const Expanded(
                           child: Text(
                             'Personal Information',
@@ -653,133 +1007,135 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 TextStyle(
                               fontSize: 16,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                               color:
-                                  Color(0xFF1B5E20),
+                                  Colors.black87,
                             ),
                           ),
                         ),
-
                         if (!_editingProfile)
                           IconButton(
                             tooltip:
                                 'Edit Profile',
                             onPressed: () {
-                              setState(() {
-                                _editingProfile =
-                                    true;
-                              });
+                              setState(
+                                () =>
+                                    _editingProfile =
+                                        true,
+                              );
                             },
                             icon:
                                 const Icon(
-                              Icons.edit_outlined,
+                              Icons
+                                  .edit_outlined,
                               color:
-                                  Color(0xFF1B5E20),
+                                  Colors.black,
                             ),
                           ),
                       ],
                     ),
 
-                    const SizedBox(height: 14),
-
-                    // =================================================
-                    // FULL NAME
-                    // =================================================
-
-                    _profileField(
-                      label: 'Full Name',
-                      value:
-                          _fullNameController.text,
-                      controller:
-                          _fullNameController,
-                      icon:
-                          Icons.person_outline,
-                      enabled:
-                          _editingProfile,
+                    const SizedBox(
+                      height: 14,
                     ),
 
-                    // =================================================
+                    // ==================================================
                     // EMAIL
-                    // =================================================
+                    // ==================================================
 
                     _profileField(
                       label: 'Email',
-                      value:
-                          _emailController.text,
-                      controller:
-                          _emailController,
                       icon:
                           Icons.email_outlined,
+                      controller:
+                          _emailController,
+                      enabled: false,
+                    ),
+
+                    // ==================================================
+                    // FULL NAME
+                    // ==================================================
+
+                    _profileField(
+                      label: 'Full Name',
+                      icon:
+                          Icons.person_outline,
+                      controller:
+                          _fullNameController,
                       enabled:
                           _editingProfile,
                     ),
 
-                    // =================================================
+                    // ==================================================
                     // ACCOUNT NUMBER
-                    // =================================================
+                    // ==================================================
 
                     _profileField(
-                      label:
-                          'Account Number',
-                      value:
-                          _accountNumberController
-                              .text,
+                      label: 'Account Number',
+                      icon: Icons
+                          .confirmation_number_outlined,
                       controller:
                           _accountNumberController,
-                      icon:
-                          Icons
-                              .confirmation_number_outlined,
                       enabled:
                           _editingProfile,
                     ),
 
-                    // =================================================
+                    // ==================================================
                     // CONTACT NUMBER
-                    // =================================================
+                    // ==================================================
 
                     _profileField(
-                      label:
-                          'Contact Number',
-                      value:
-                          _contactNumberController
-                              .text,
-                      controller:
-                          _contactNumberController,
+                      label: 'Contact Number',
                       icon:
                           Icons.phone_outlined,
-                      enabled:
-                          _editingProfile,
-                    ),
-
-                    // =================================================
-                    // ADDRESS
-                    // =================================================
-
-                    _profileField(
-                      label: 'Address',
-                      value:
-                          _addressController.text,
                       controller:
-                          _addressController,
-                      icon:
-                          Icons.home_outlined,
+                          _contactNumberController,
                       enabled:
                           _editingProfile,
+                      keyboardType:
+                          TextInputType.phone,
                     ),
 
-                    // =================================================
-                    // USER TYPE
-                    // =================================================
+                    // ==================================================
+                    // ADDRESS
+                    // ==================================================
+
+                    const SizedBox(
+                      height: 2,
+                    ),
+
+                    const Text(
+                      'Address',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            FontWeight.w600,
+                        color:
+                            Colors.black54,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
+                    // MUNICIPALITY + BARANGAY
+                    _addressSection(),
+
+                    // ==================================================
+                    // ACCOUNT TYPE
+                    // ==================================================
 
                     Container(
-                      width:
-                          double.infinity,
+                      width: double.infinity,
                       margin:
                           const EdgeInsets.only(
                         bottom: 12,
                       ),
                       padding:
-                          const EdgeInsets.symmetric(
+                          const EdgeInsets
+                              .symmetric(
                         horizontal: 14,
                         vertical: 14,
                       ),
@@ -790,13 +1146,14 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           0xFFF5F7F5,
                         ),
                         borderRadius:
-                            BorderRadius.circular(
+                            BorderRadius
+                                .circular(
                           12,
                         ),
-                        border:
-                            Border.all(
-                          color:
-                              Colors.grey.shade200,
+                        border: Border.all(
+                          color: Colors
+                              .grey
+                              .shade200,
                         ),
                       ),
                       child: Row(
@@ -804,27 +1161,24 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           const Icon(
                             Icons
                                 .verified_user_outlined,
-                            color:
-                                Color(0xFF1B5E20),
+                            color: Color(
+                              0xFF03C70D,
+                            ),
                             size: 21,
                           ),
-
                           const SizedBox(
                             width: 12,
                           ),
-
                           const Text(
                             'Account Type',
                             style:
                                 TextStyle(
                               fontSize: 12,
-                              color:
-                                  Colors.black54,
+                              color: Colors
+                                  .black54,
                             ),
                           ),
-
                           const Spacer(),
-
                           Container(
                             padding:
                                 const EdgeInsets
@@ -834,11 +1188,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             ),
                             decoration:
                                 BoxDecoration(
-                              color:
-                                  const Color(
-                                0xFF1B5E20,
-                              ).withOpacity(
-                                0.10,
+                              color: orange
+                                  .withOpacity(
+                                .12,
                               ),
                               borderRadius:
                                   BorderRadius
@@ -853,11 +1205,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   TextStyle(
                                 fontSize: 11,
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                                 color:
-                                    Color(
-                                  0xFF1B5E20,
-                                ),
+                                    orange,
                               ),
                             ),
                           ),
@@ -865,9 +1216,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       ),
                     ),
 
-                    // =================================================
-                    // EDIT BUTTONS
-                    // =================================================
+                    // ==================================================
+                    // SAVE / CANCEL
+                    // ==================================================
 
                     if (_editingProfile)
                       Row(
@@ -882,10 +1233,11 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                           await _loadProfile();
 
                                           if (mounted) {
-                                            setState(() {
-                                              _editingProfile =
-                                                  false;
-                                            });
+                                            setState(
+                                              () =>
+                                                  _editingProfile =
+                                                      false,
+                                            );
                                           }
                                         },
                               style:
@@ -898,8 +1250,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 ),
                                 side:
                                     BorderSide(
-                                  color:
-                                      Colors.grey.shade400,
+                                  color: Colors
+                                      .grey
+                                      .shade400,
                                 ),
                                 shape:
                                     RoundedRectangleBorder(
@@ -916,11 +1269,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               ),
                             ),
                           ),
-
                           const SizedBox(
                             width: 10,
                           ),
-
                           Expanded(
                             child:
                                 ElevatedButton(
@@ -932,9 +1283,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   ElevatedButton
                                       .styleFrom(
                                 backgroundColor:
-                                    const Color(
-                                  0xFF1B5E20,
-                                ),
+                                    orange,
                                 foregroundColor:
                                     Colors.white,
                                 padding:
@@ -954,14 +1303,16 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               child:
                                   _savingProfile
                                       ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
+                                          height:
+                                              20,
+                                          width:
+                                              20,
                                           child:
                                               CircularProgressIndicator(
                                             strokeWidth:
                                                 2,
-                                            color: Colors
-                                                .white,
+                                            color:
+                                                Colors.white,
                                           ),
                                         )
                                       : const Text(
@@ -978,9 +1329,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         ],
                       ),
 
-                    // =================================================
-                    // UID INFORMATION
-                    // =================================================
+                    // ==================================================
+                    // FIREBASE UID
+                    // ==================================================
 
                     if (!_editingProfile)
                       Padding(
@@ -992,7 +1343,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           'Firebase UID: ${user.uid}',
                           maxLines: 1,
                           overflow:
-                              TextOverflow.ellipsis,
+                              TextOverflow
+                                  .ellipsis,
                           style:
                               const TextStyle(
                             fontSize: 10,
@@ -1010,9 +1362,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     );
   }
 
-  // ================================================================
-  // GET BILLS
-  // ================================================================
+  // ============================================================
+  // FIRESTORE STREAMS
+  // ============================================================
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _getBills(
     String consumerId,
@@ -1026,10 +1378,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         .snapshots();
   }
 
-  // ================================================================
-  // GET COMPLAINTS
-  // ================================================================
-
   Stream<QuerySnapshot<Map<String, dynamic>>> _getComplaints(
     String consumerId,
   ) {
@@ -1042,9 +1390,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         .snapshots();
   }
 
-  // ================================================================
+  // ============================================================
   // SUMMARY CARD
-  // ================================================================
+  // ============================================================
 
   Widget _summaryCard({
     required String title,
@@ -1055,7 +1403,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding:
+          const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
@@ -1063,7 +1412,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(0.06),
+                Colors.black.withOpacity(.06),
             blurRadius: 12,
             offset:
                 const Offset(0, 5),
@@ -1078,7 +1427,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             decoration:
                 BoxDecoration(
               color:
-                  color.withOpacity(0.10),
+                  color.withOpacity(.10),
               borderRadius:
                   BorderRadius.circular(
                 15,
@@ -1090,9 +1439,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               size: 27,
             ),
           ),
-
-          const SizedBox(width: 14),
-
+          const SizedBox(
+            width: 14,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -1109,22 +1458,21 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         Colors.black54,
                   ),
                 ),
-
-                const SizedBox(height: 5),
-
+                const SizedBox(
+                  height: 5,
+                ),
                 Text(
                   value,
-                  style:
-                      TextStyle(
+                  style: TextStyle(
                     fontSize: 21,
                     fontWeight:
                         FontWeight.bold,
                     color: color,
                   ),
                 ),
-
-                const SizedBox(height: 3),
-
+                const SizedBox(
+                  height: 3,
+                ),
                 Text(
                   subtitle,
                   style:
@@ -1142,9 +1490,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     );
   }
 
-  // ================================================================
+  // ============================================================
   // MONTH SELECTOR
-  // ================================================================
+  // ============================================================
 
   Widget _monthSelector() {
     return Container(
@@ -1154,36 +1502,29 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         horizontal: 14,
         vertical: 3,
       ),
-      decoration:
-          BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color:
-              Colors.grey.shade200,
+          color: Colors.grey.shade200,
         ),
       ),
       child:
           DropdownButtonHideUnderline(
-        child:
-            DropdownButton<int>(
+        child: DropdownButton<int>(
           value: selectedMonth,
           isExpanded: true,
-          icon:
-              const Icon(
+          icon: const Icon(
             Icons.keyboard_arrow_down,
-            color:
-                Color(0xFF1B5E20),
+            color: orange,
           ),
-          items:
-              List.generate(
+          items: List.generate(
             12,
             (index) {
-              final month =
-                  index + 1;
+              final month = index + 1;
 
-              return DropdownMenuItem<int>(
+              return DropdownMenuItem(
                 value: month,
                 child: Text(
                   '${_monthName(month)} $selectedYear',
@@ -1196,15 +1537,11 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               );
             },
           ),
-          onChanged:
-              (value) {
-            if (value == null) {
-              return;
-            }
+          onChanged: (value) {
+            if (value == null) return;
 
             setState(() {
-              selectedMonth =
-                  value;
+              selectedMonth = value;
             });
           },
         ),
@@ -1212,9 +1549,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     );
   }
 
-  // ================================================================
+  // ============================================================
   // SMALL AMOUNT
-  // ================================================================
+  // ============================================================
 
   Widget _smallAmount({
     required String title,
@@ -1224,35 +1561,31 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     return Container(
       padding:
           const EdgeInsets.all(13),
-      decoration:
-          BoxDecoration(
+      decoration: BoxDecoration(
         color:
-            color.withOpacity(0.07),
+            color.withOpacity(.07),
         borderRadius:
             BorderRadius.circular(12),
       ),
-      child:
-          Column(
+      child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style:
-                TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight:
                   FontWeight.w600,
               color: color,
             ),
           ),
-
-          const SizedBox(height: 4),
-
+          const SizedBox(
+            height: 4,
+          ),
           Text(
             '₱${amount.toStringAsFixed(2)}',
-            style:
-                TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight:
                   FontWeight.bold,
@@ -1264,316 +1597,19 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     );
   }
 
-  // ================================================================
-  // MONTHLY BILLING HISTORY
-  // ================================================================
-
-  Widget _monthlyBillingHistory(
-    List<Map<String, dynamic>> bills,
-  ) {
-    final Map<String, Map<String, double>>
-        monthly = {};
-
-    for (final bill in bills) {
-      final billingPeriod =
-          bill['billingPeriod']
-                  ?.toString() ??
-              '';
-
-      if (billingPeriod.isEmpty) {
-        continue;
-      }
-
-      final amount =
-          _getAmount(bill);
-
-      monthly.putIfAbsent(
-        billingPeriod,
-        () => {
-          'paid': 0,
-          'unpaid': 0,
-        },
-      );
-
-      if (_isPaid(bill)) {
-        monthly[billingPeriod]!['paid'] =
-            (monthly[billingPeriod]![
-                        'paid'] ??
-                    0) +
-                amount;
-      } else {
-        monthly[billingPeriod]!['unpaid'] =
-            (monthly[billingPeriod]![
-                        'unpaid'] ??
-                    0) +
-                amount;
-      }
-    }
-
-    if (monthly.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding:
-            const EdgeInsets.all(25),
-        decoration:
-            BoxDecoration(
-          color: Colors.white,
-          borderRadius:
-              BorderRadius.circular(18),
-        ),
-        child:
-            const Column(
-          children: [
-            Icon(
-              Icons.receipt_long_outlined,
-              size: 45,
-              color: Colors.black26,
-            ),
-            SizedBox(height: 10),
-            Text(
-              'No billing history available.',
-              style: TextStyle(
-                color: Colors.black54,
-                fontWeight:
-                    FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final entries =
-        monthly.entries.toList();
-
-    entries.sort(
-      (a, b) {
-        final aParts =
-            a.key.split(' ');
-        final bParts =
-            b.key.split(' ');
-
-        final aYear =
-            int.tryParse(
-                  aParts.last,
-                ) ??
-                0;
-
-        final bYear =
-            int.tryParse(
-                  bParts.last,
-                ) ??
-                0;
-
-        if (aYear != bYear) {
-          return bYear.compareTo(
-            aYear,
-          );
-        }
-
-        const months = {
-          'January': 1,
-          'February': 2,
-          'March': 3,
-          'April': 4,
-          'May': 5,
-          'June': 6,
-          'July': 7,
-          'August': 8,
-          'September': 9,
-          'October': 10,
-          'November': 11,
-          'December': 12,
-        };
-
-        final aMonth =
-            months[aParts.first] ??
-                0;
-
-        final bMonth =
-            months[bParts.first] ??
-                0;
-
-        return bMonth.compareTo(
-          aMonth,
-        );
-      },
-    );
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.all(18),
-      decoration:
-          BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color:
-                Colors.black.withOpacity(
-              0.05,
-            ),
-            blurRadius: 12,
-            offset:
-                const Offset(0, 5),
-          ),
-        ],
-      ),
-      child:
-          Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Monthly Billing History',
-            style:
-                TextStyle(
-              fontSize: 17,
-              fontWeight:
-                  FontWeight.bold,
-              color:
-                  Color(0xFF1B5E20),
-            ),
-          ),
-
-          const SizedBox(height: 5),
-
-          const Text(
-            'Paid and unpaid bills by billing period',
-            style:
-                TextStyle(
-              fontSize: 12,
-              color:
-                  Colors.black54,
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          ...entries.map(
-            (entry) {
-              final paid =
-                  entry.value['paid'] ??
-                      0;
-
-              final unpaid =
-                  entry.value['unpaid'] ??
-                      0;
-
-              return Container(
-                margin:
-                    const EdgeInsets.only(
-                  bottom: 12,
-                ),
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
-                decoration:
-                    BoxDecoration(
-                  color:
-                      const Color(
-                    0xFFF8F9F8,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    14,
-                  ),
-                ),
-                child:
-                    Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_month,
-                          size: 20,
-                          color:
-                              Color(0xFF1B5E20),
-                        ),
-
-                        const SizedBox(
-                          width: 8,
-                        ),
-
-                        Expanded(
-                          child:
-                              Text(
-                            entry.key,
-                            style:
-                                const TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child:
-                              _smallAmount(
-                            title:
-                                'Paid',
-                            amount:
-                                paid,
-                            color:
-                                Colors.green,
-                          ),
-                        ),
-
-                        const SizedBox(
-                          width: 10,
-                        ),
-
-                        Expanded(
-                          child:
-                              _smallAmount(
-                            title:
-                                'Unpaid',
-                            amount:
-                                unpaid,
-                            color:
-                                Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ================================================================
+  // ============================================================
   // INIT
-  // ================================================================
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
-
     _loadProfile();
   }
 
-  // ================================================================
+  // ============================================================
   // DISPOSE
-  // ================================================================
+  // ============================================================
 
   @override
   void dispose() {
@@ -1581,99 +1617,91 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     _emailController.dispose();
     _accountNumberController.dispose();
     _contactNumberController.dispose();
-    _addressController.dispose();
 
     super.dispose();
   }
 
-  // ================================================================
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+
+  void _openScreen(Widget screen) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => screen,
+      ),
+    );
+  }
+
+  // ============================================================
   // BUILD
-  // ================================================================
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
-    final user =
-        _auth.currentUser;
+    final user = _auth.currentUser;
 
     if (user == null) {
       return const LoginScreen();
     }
 
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7F5),
+      backgroundColor: background,
 
-      // ============================================================
+      // ========================================================
       // APP BAR
-      // ============================================================
+      // ========================================================
 
       appBar: AppBar(
         title: const Text(
           'Consumer Dashboard',
-          style:
-              TextStyle(
+          style: TextStyle(
             fontWeight:
                 FontWeight.bold,
           ),
         ),
-        backgroundColor:
-            Theme.of(context)
-                .primaryColor,
+        backgroundColor: orange,
         foregroundColor:
             Colors.white,
         elevation: 0,
         actions: [
           IconButton(
             icon:
-                const Icon(
-              Icons.logout,
-            ),
-            onPressed:
-                () => _logout(
-              context,
-            ),
+                const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: _logout,
           ),
         ],
       ),
 
-      // ============================================================
+      // ========================================================
       // BODY
-      // ============================================================
+      // ========================================================
 
       body: SafeArea(
-        child:
-            StreamBuilder<
-                QuerySnapshot<
-                    Map<String, dynamic>>>(
-          stream:
-              _getBills(
+        child: StreamBuilder<
+            QuerySnapshot<
+                Map<String, dynamic>>>(
+          stream: _getBills(
             user.uid,
           ),
           builder:
-              (
-            context,
-            billSnapshot,
-          ) {
-            if (billSnapshot
-                .hasError) {
+              (context, billSnapshot) {
+            if (billSnapshot.hasError) {
               return Center(
-                child:
-                    Padding(
+                child: Padding(
                   padding:
                       const EdgeInsets
-                          .all(
-                    25,
-                  ),
-                  child:
-                      Text(
+                          .all(25),
+                  child: Text(
                     'Unable to load bills.\n\n'
                     '${billSnapshot.error}',
                     textAlign:
                         TextAlign.center,
                     style:
                         const TextStyle(
-                      color:
-                          Colors.red,
+                      color: Colors.red,
                     ),
                   ),
                 ),
@@ -1682,18 +1710,17 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
 
             if (billSnapshot
                     .connectionState ==
-                ConnectionState
-                    .waiting) {
+                ConnectionState.waiting) {
               return const Center(
                 child:
-                    CircularProgressIndicator(),
+                    CircularProgressIndicator(
+                  color: orange,
+                ),
               );
             }
 
             final bills =
-                billSnapshot
-                        .data
-                        ?.docs
+                billSnapshot.data?.docs
                         .map(
                           (doc) =>
                               doc.data(),
@@ -1701,38 +1728,34 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         .toList() ??
                     [];
 
-            // ======================================================
-            // TOTALS
-            // ======================================================
+            // ==================================================
+            // ACCOUNT TOTALS
+            // ==================================================
 
             double totalPaid = 0;
             double totalUnpaid = 0;
+
+            // ==================================================
+            // MONTHLY TOTALS
+            // ==================================================
 
             double monthlyPaid = 0;
             double monthlyUnpaid = 0;
 
             final selectedPeriod =
-                '${_monthName(selectedMonth)} '
-                '$selectedYear';
+                '${_monthName(selectedMonth)} $selectedYear';
 
-            for (final bill
-                in bills) {
+            for (final bill in bills) {
               final amount =
-                  _getAmount(
-                bill,
-              );
+                  _getAmount(bill);
 
               final paid =
-                  _isPaid(
-                bill,
-              );
+                  _isPaid(bill);
 
               if (paid) {
-                totalPaid +=
-                    amount;
+                totalPaid += amount;
               } else {
-                totalUnpaid +=
-                    amount;
+                totalUnpaid += amount;
               }
 
               final period =
@@ -1753,19 +1776,15 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               }
             }
 
-            // ======================================================
-            // COMPLAINTS
-            // ======================================================
-
             return StreamBuilder<
                 QuerySnapshot<
-                    Map<String, dynamic>>>(
+                    Map<String,
+                        dynamic>>>(
               stream:
                   _getComplaints(
                 user.uid,
               ),
-              builder:
-                  (
+              builder: (
                 context,
                 complaintSnapshot,
               ) {
@@ -1785,14 +1804,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                     20,
                     30,
                   ),
-                  child:
-                      Column(
+                  child: Column(
                     crossAxisAlignment:
                         CrossAxisAlignment
                             .start,
                     children: [
                       // ==================================================
-                      // CLICKABLE PROFILE DROPDOWN
+                      // PROFILE
                       // ==================================================
 
                       _profileDropdown(
@@ -1813,9 +1831,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             TextStyle(
                           fontSize: 19,
                           fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
                           color:
-                              Color(0xFF1B5E20),
+                              Colors.black87,
                         ),
                       ),
 
@@ -1837,10 +1856,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         height: 16,
                       ),
 
-                      // ==================================================
-                      // REMAINING DUE
-                      // ==================================================
-
                       _summaryCard(
                         title:
                             'Remaining Due',
@@ -1848,8 +1863,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             '₱${totalUnpaid.toStringAsFixed(2)}',
                         subtitle:
                             'Total unpaid balance',
-                        icon:
-                            Icons.account_balance_wallet,
+                        icon: Icons
+                            .account_balance_wallet,
                         color:
                             Colors.red,
                       ),
@@ -1858,10 +1873,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         height: 12,
                       ),
 
-                      // ==================================================
-                      // TOTAL PAID
-                      // ==================================================
-
                       _summaryCard(
                         title:
                             'Total Paid',
@@ -1869,8 +1880,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             '₱${totalPaid.toStringAsFixed(2)}',
                         subtitle:
                             'Total payments made',
-                        icon:
-                            Icons.check_circle_outline,
+                        icon: Icons
+                            .check_circle_outline,
                         color:
                             Colors.green,
                       ),
@@ -1878,10 +1889,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       const SizedBox(
                         height: 12,
                       ),
-
-                      // ==================================================
-                      // COMPLAINTS
-                      // ==================================================
 
                       _summaryCard(
                         title:
@@ -1891,12 +1898,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 .toString(),
                         subtitle:
                             'Total complaints submitted',
-                        icon:
-                            Icons.report_problem_outlined,
-                        color:
-                            const Color(
-                          0xFFDAA520,
-                        ),
+                        icon: Icons
+                            .report_problem_outlined,
+                        color: orange,
                       ),
 
                       const SizedBox(
@@ -1913,9 +1917,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             TextStyle(
                           fontSize: 19,
                           fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
                           color:
-                              Color(0xFF1B5E20),
+                              Colors.black87,
                         ),
                       ),
 
@@ -1924,7 +1929,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       ),
 
                       const Text(
-                        'Filter your billing activity by month',
+                        'View your billing summary for a selected month',
                         style:
                             TextStyle(
                           fontSize: 12,
@@ -1944,7 +1949,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       ),
 
                       // ==================================================
-                      // SELECTED MONTH
+                      // MONTHLY CARD
                       // ==================================================
 
                       Container(
@@ -1952,9 +1957,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             double.infinity,
                         padding:
                             const EdgeInsets
-                                .all(
-                          18,
-                        ),
+                                .all(18),
                         decoration:
                             BoxDecoration(
                           color:
@@ -1969,7 +1972,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               color: Colors
                                   .black
                                   .withOpacity(
-                                0.05,
+                                .05,
                               ),
                               blurRadius:
                                   12,
@@ -1987,24 +1990,79 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               CrossAxisAlignment
                                   .start,
                           children: [
-                            Text(
-                              selectedPeriod,
-                              style:
-                                  const TextStyle(
-                                fontSize:
-                                    16,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                                color:
-                                    Color(
-                                  0xFF1B5E20,
+                            Row(
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration:
+                                      BoxDecoration(
+                                    color:
+                                        orange.withOpacity(
+                                      .12,
+                                    ),
+                                    borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                      12,
+                                    ),
+                                  ),
+                                  child:
+                                      const Icon(
+                                    Icons
+                                        .calendar_month,
+                                    color:
+                                        orange,
+                                    size:
+                                        23,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(
+                                  width: 12,
+                                ),
+                                Expanded(
+                                  child:
+                                      Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment
+                                            .start,
+                                    children: [
+                                      const Text(
+                                        'Billing Period',
+                                        style:
+                                            TextStyle(
+                                          fontSize:
+                                              11,
+                                          color:
+                                              Colors.black54,
+                                          fontWeight:
+                                              FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(
+                                        height:
+                                            3,
+                                      ),
+                                      Text(
+                                        selectedPeriod,
+                                        style:
+                                            const TextStyle(
+                                          fontSize:
+                                              16,
+                                          fontWeight:
+                                              FontWeight.bold,
+                                          color:
+                                              orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
 
                             const SizedBox(
-                              height: 14,
+                              height: 18,
                             ),
 
                             Row(
@@ -2020,11 +2078,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                         Colors.green,
                                   ),
                                 ),
-
                                 const SizedBox(
                                   width: 10,
                                 ),
-
                                 Expanded(
                                   child:
                                       _smallAmount(
@@ -2038,20 +2094,140 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 ),
                               ],
                             ),
+
+                            const SizedBox(
+                              height: 14,
+                            ),
+
+                            Container(
+                              width:
+                                  double.infinity,
+                              padding:
+                                  const EdgeInsets
+                                      .all(
+                                14,
+                              ),
+                              decoration:
+                                  BoxDecoration(
+                                color:
+                                    orange.withOpacity(
+                                  .07,
+                                ),
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  12,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons
+                                        .account_balance_wallet_outlined,
+                                    color:
+                                        orange,
+                                    size:
+                                        22,
+                                  ),
+                                  const SizedBox(
+                                    width: 10,
+                                  ),
+                                  const Expanded(
+                                    child:
+                                        Text(
+                                      'Monthly Total',
+                                      style:
+                                          TextStyle(
+                                        fontSize:
+                                            12,
+                                        fontWeight:
+                                            FontWeight.w600,
+                                        color:
+                                            Colors.black54,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '₱${(monthlyPaid + monthlyUnpaid).toStringAsFixed(2)}',
+                                    style:
+                                        const TextStyle(
+                                      fontSize:
+                                          17,
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      color:
+                                          orange,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            if (monthlyPaid ==
+                                    0 &&
+                                monthlyUnpaid ==
+                                    0)
+                              Padding(
+                                padding:
+                                    const EdgeInsets
+                                        .only(
+                                  top: 14,
+                                ),
+                                child:
+                                    Container(
+                                  width:
+                                      double.infinity,
+                                  padding:
+                                      const EdgeInsets
+                                          .all(
+                                    13,
+                                  ),
+                                  decoration:
+                                      BoxDecoration(
+                                    color:
+                                        const Color(
+                                      0xFFF8F8F8,
+                                    ),
+                                    borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                      12,
+                                    ),
+                                  ),
+                                  child:
+                                      const Row(
+                                    children: [
+                                      Icon(
+                                        Icons
+                                            .info_outline,
+                                        color:
+                                            Colors.black38,
+                                        size:
+                                            20,
+                                      ),
+                                      SizedBox(
+                                        width:
+                                            9,
+                                      ),
+                                      Expanded(
+                                        child:
+                                            Text(
+                                          'No billing records found for this month.',
+                                          style:
+                                              TextStyle(
+                                            fontSize:
+                                                11,
+                                            color:
+                                                Colors.black54,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
-                      ),
-
-                      const SizedBox(
-                        height: 28,
-                      ),
-
-                      // ==================================================
-                      // BILLING HISTORY
-                      // ==================================================
-
-                      _monthlyBillingHistory(
-                        bills,
                       ),
                     ],
                   ),
@@ -2062,9 +2238,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         ),
       ),
 
-      // ============================================================
+      // ========================================================
       // BOTTOM NAVIGATION
-      // ============================================================
+      // ========================================================
 
       bottomNavigationBar:
           BottomNavigationBar(
@@ -2072,82 +2248,80 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             BottomNavigationBarType.fixed,
         currentIndex: 0,
         selectedItemColor:
-            const Color(0xFF1B5E20),
+            orange,
         unselectedItemColor:
             Colors.grey,
-        onTap:
-            (index) {
-          final destinations = [
-            const ConsumerDashboard(),
-            const ConsumerBillScreen(),
-            const ConsumerReportScreen(),
-            const SubmitComplaintScreen(),
-            const ViewAnnouncementsScreen(),
-          ];
+        onTap: (index) {
+          if (index == 0) {
+            return;
+          }
 
-          if (index != 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder:
-                    (_) =>
-                        destinations[index],
-              ),
-            );
+          switch (index) {
+            case 1:
+              _openScreen(
+                const ConsumerBillScreen(),
+              );
+              break;
+
+            case 2:
+              _openScreen(
+                const ConsumerReportScreen(),
+              );
+              break;
+
+            case 3:
+              _openScreen(
+                const SubmitComplaintScreen(),
+              );
+              break;
+
+            case 4:
+              _openScreen(
+                const ViewAnnouncementsScreen(),
+              );
+              break;
           }
         },
         items: const [
           BottomNavigationBarItem(
             icon:
-                Icon(
-              Icons.home_outlined,
-            ),
+                Icon(Icons.home_outlined),
             activeIcon:
-                Icon(
-              Icons.home,
-            ),
+                Icon(Icons.home),
             label: 'Home',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(
+            icon: Icon(
               Icons.receipt_long_outlined,
             ),
-            activeIcon:
-                Icon(
+            activeIcon: Icon(
               Icons.receipt_long,
             ),
             label: 'Bills',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(
+            icon: Icon(
               Icons.pie_chart_outline,
             ),
-            activeIcon:
-                Icon(
+            activeIcon: Icon(
               Icons.pie_chart,
             ),
             label: 'Reports',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(
+            icon: Icon(
               Icons.report_problem_outlined,
             ),
-            activeIcon:
-                Icon(
+            activeIcon: Icon(
               Icons.report_problem,
             ),
             label: 'Complaints',
           ),
           BottomNavigationBarItem(
-            icon:
-                Icon(
+            icon: Icon(
               Icons.campaign_outlined,
             ),
-            activeIcon:
-                Icon(
+            activeIcon: Icon(
               Icons.campaign,
             ),
             label: 'News',

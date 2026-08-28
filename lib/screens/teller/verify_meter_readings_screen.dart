@@ -96,15 +96,7 @@ class _VerifyMeterReadingsScreenState
 
     final billingPeriod = raw.toString().trim();
 
-    if (billingPeriod.isEmpty) {
-      return null;
-    }
-
-    // Example:
-    // August 2026
-    // August
-    // 2026-08
-    // 08/2026
+    if (billingPeriod.isEmpty) return null;
 
     final lower = billingPeriod.toLowerCase();
 
@@ -112,25 +104,20 @@ class _VerifyMeterReadingsScreenState
       if (lower.contains(_monthNames[i].toLowerCase())) {
         int year = DateTime.now().year;
 
-        final yearMatch = RegExp(r'\b20\d{2}\b').firstMatch(
-          billingPeriod,
-        );
+        final yearMatch =
+            RegExp(r'\b20\d{2}\b').firstMatch(billingPeriod);
 
         if (yearMatch != null) {
           year = int.tryParse(yearMatch.group(0)!) ?? year;
         }
 
-        return DateTime(
-          year,
-          i + 1,
-          1,
-        );
+        return DateTime(year, i + 1, 1);
       }
     }
 
-    final numericMatch = RegExp(
-      r'^(\d{1,2})[\/\-](20\d{2})$',
-    ).firstMatch(billingPeriod);
+    final numericMatch =
+        RegExp(r'^(\d{1,2})[\/\-](20\d{2})$')
+            .firstMatch(billingPeriod);
 
     if (numericMatch != null) {
       final month = int.tryParse(numericMatch.group(1)!);
@@ -157,9 +144,8 @@ class _VerifyMeterReadingsScreenState
       return billingDate.month;
     }
 
-    final fallbackDate = isBill
-        ? _getBillDate(data)
-        : _getReadingDate(data);
+    final fallbackDate =
+        isBill ? _getBillDate(data) : _getReadingDate(data);
 
     return fallbackDate?.month;
   }
@@ -168,9 +154,7 @@ class _VerifyMeterReadingsScreenState
   // STATUS
   // ============================================================
 
-  String _getFirestoreStatus(
-    Map<String, dynamic> data,
-  ) {
+  String _getFirestoreStatus(Map<String, dynamic> data) {
     return (data['status'] ?? '')
         .toString()
         .trim()
@@ -195,8 +179,6 @@ class _VerifyMeterReadingsScreenState
       return 'Unpaid';
     }
 
-    // Preserve other Firestore statuses instead of
-    // automatically calling them unpaid.
     if (status.isEmpty) {
       return 'Unknown';
     }
@@ -214,16 +196,12 @@ class _VerifyMeterReadingsScreenState
     switch (status.toLowerCase()) {
       case 'paid':
         return Colors.green;
-
       case 'unpaid':
         return Colors.orange;
-
       case 'pending':
         return Colors.blue;
-
       case 'verified':
         return Colors.teal;
-
       default:
         return Colors.grey;
     }
@@ -263,10 +241,7 @@ class _VerifyMeterReadingsScreenState
       return value.toDouble();
     }
 
-    return double.tryParse(
-          value?.toString() ?? '',
-        ) ??
-        0;
+    return double.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   // ============================================================
@@ -314,9 +289,12 @@ class _VerifyMeterReadingsScreenState
   // ============================================================
   // LOCATION
   //
-  // IMPORTANT:
-  // This now reads ONLY the current Firestore document.
-  // No users collection lookup.
+  // For bills:
+  // Uses the location saved in the bill.
+  //
+  // For pending readings:
+  // The current user's profile location is merged into the
+  // reading before filtering/displaying.
   // ============================================================
 
   String _getBarangay(Map<String, dynamic> data) {
@@ -435,10 +413,9 @@ class _VerifyMeterReadingsScreenState
       _getBarangay(data),
     );
 
-    return barangay ==
-        _normalize(
-          _selectedBarangay,
-        );
+    return barangay == _normalize(
+      _selectedBarangay,
+    );
   }
 
   // ============================================================
@@ -512,7 +489,7 @@ class _VerifyMeterReadingsScreenState
   }
 
   // ============================================================
-  // DOCUMENT FILTER
+  // DOCUMENT FILTER - BILLS
   // ============================================================
 
   List<QueryDocumentSnapshot> _filterDocuments(
@@ -523,19 +500,14 @@ class _VerifyMeterReadingsScreenState
       final data =
           doc.data() as Map<String, dynamic>;
 
-      final monthMatches = _matchesMonth(
+      if (!_matchesMonth(
         data,
         isBill: isBill,
-      );
-
-      if (!monthMatches) {
+      )) {
         return false;
       }
 
-      final locationMatches =
-          _matchesLocation(data);
-
-      if (!locationMatches) {
+      if (!_matchesLocation(data)) {
         return false;
       }
 
@@ -548,7 +520,7 @@ class _VerifyMeterReadingsScreenState
   }
 
   // ============================================================
-  // SORT
+  // SORT BILLS
   // ============================================================
 
   List<QueryDocumentSnapshot> _sortDocuments(
@@ -576,16 +548,47 @@ class _VerifyMeterReadingsScreenState
           : _getReadingDate(dataB);
 
       final actualA =
-          dateA ?? DateTime.fromMillisecondsSinceEpoch(0);
+          dateA ??
+              DateTime.fromMillisecondsSinceEpoch(0);
 
       final actualB =
-          dateB ?? DateTime.fromMillisecondsSinceEpoch(0);
+          dateB ??
+              DateTime.fromMillisecondsSinceEpoch(0);
 
       if (_sortOption == 'Newest') {
         return actualB.compareTo(actualA);
       }
 
       return actualA.compareTo(actualB);
+    });
+
+    return result;
+  }
+
+  // ============================================================
+  // SORT PENDING READINGS
+  // ============================================================
+
+  List<_ReadingItem> _sortReadingItems(
+    List<_ReadingItem> items,
+  ) {
+    final result =
+        List<_ReadingItem>.from(items);
+
+    result.sort((a, b) {
+      final dateA =
+          _getReadingDate(a.data) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+
+      final dateB =
+          _getReadingDate(b.data) ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+
+      if (_sortOption == 'Newest') {
+        return dateB.compareTo(dateA);
+      }
+
+      return dateA.compareTo(dateB);
     });
 
     return result;
@@ -635,11 +638,156 @@ class _VerifyMeterReadingsScreenState
   }
 
   // ============================================================
+  // GET CURRENT CONSUMER PROFILE
+  // ============================================================
+
+  Map<String, dynamic>? _findCurrentProfile(
+    Map<String, dynamic> reading,
+    List<QueryDocumentSnapshot> users,
+  ) {
+    final consumerId =
+        _getConsumerId(reading);
+
+    if (consumerId.isEmpty) {
+      return null;
+    }
+
+    for (final userDoc in users) {
+      final userData =
+          userDoc.data()
+              as Map<String, dynamic>;
+
+      final ids = [
+        userDoc.id,
+        _stringValue(
+          userData,
+          ['uid'],
+        ),
+        _stringValue(
+          userData,
+          ['userId'],
+        ),
+        _stringValue(
+          userData,
+          ['consumerId'],
+        ),
+        _stringValue(
+          userData,
+          ['consumerUID'],
+        ),
+      ];
+
+      if (ids.any(
+        (id) =>
+            id.isNotEmpty &&
+            id == consumerId,
+      )) {
+        return userData;
+      }
+    }
+
+    return null;
+  }
+
+  // ============================================================
+  // MERGE CURRENT PROFILE LOCATION
+  //
+  // IMPORTANT:
+  // This does NOT update Firestore.
+  //
+  // It only creates a temporary copy used by this screen.
+  // Therefore old meter-reading records are not modified.
+  // ============================================================
+
+  Map<String, dynamic> _getCurrentReadingData(
+    Map<String, dynamic> reading,
+    Map<String, dynamic>? profile,
+  ) {
+    final result =
+        Map<String, dynamic>.from(reading);
+
+    if (profile == null) {
+      return result;
+    }
+
+    final currentBarangay = _stringValue(
+      profile,
+      [
+        'barangay',
+        'baranggay',
+      ],
+    );
+
+    final currentMunicipality = _stringValue(
+      profile,
+      [
+        'municipality',
+        'city',
+      ],
+    );
+
+    final currentProvince = _stringValue(
+      profile,
+      [
+        'province',
+      ],
+      fallback: 'Sorsogon',
+    );
+
+    final currentAddress = _stringValue(
+      profile,
+      [
+        'address',
+      ],
+    );
+
+    // Use the current profile location.
+    result['barangay'] = currentBarangay;
+    result['municipality'] = currentMunicipality;
+    result['province'] = currentProvince;
+    result['address'] = currentAddress;
+
+    // Also use current consumer information when available.
+    final currentName = _stringValue(
+      profile,
+      [
+        'consumerName',
+        'full_name',
+        'fullName',
+        'name',
+      ],
+    );
+
+    if (currentName.isNotEmpty) {
+      result['consumerName'] = currentName;
+    }
+
+    final currentAccountNumber =
+        _stringValue(
+      profile,
+      [
+        'accountNumber',
+        'accountNo',
+        'account_number',
+        'account',
+      ],
+    );
+
+    if (currentAccountNumber.isNotEmpty) {
+      result['accountNumber'] =
+          currentAccountNumber;
+    }
+
+    return result;
+  }
+
+  // ============================================================
   // VERIFY READING
   // ============================================================
 
   Future<void> _verifyReading({
     required DocumentSnapshot readingDoc,
+    required Map<String, dynamic> readingData,
     required double previousReading,
     required double currentReading,
     required double consumption,
@@ -655,8 +803,10 @@ class _VerifyMeterReadingsScreenState
     });
 
     try {
-      final reading =
-          readingDoc.data() as Map<String, dynamic>? ?? {};
+      // Use the CURRENT profile-enriched reading data.
+      final reading = Map<String, dynamic>.from(
+        readingData,
+      );
 
       final billRef =
           _firestore.collection('bills').doc();
@@ -673,7 +823,6 @@ class _VerifyMeterReadingsScreenState
       final accountNumber =
           _getAccountNumber(reading);
 
-      // READ LOCATION DIRECTLY FROM THE READING
       final barangay =
           _getBarangay(reading);
 
@@ -686,8 +835,8 @@ class _VerifyMeterReadingsScreenState
       String address =
           _getAddress(reading);
 
-      // Only construct address if the current
-      // Firestore reading does not already contain one.
+      // Construct address only if profile does not
+      // contain a complete address.
       if (address.isEmpty &&
           barangay.isNotEmpty &&
           municipality.isNotEmpty) {
@@ -702,63 +851,91 @@ class _VerifyMeterReadingsScreenState
         }
       }
 
-      final billData = <String, dynamic>{
+      final billData =
+          <String, dynamic>{
         'billId': billRef.id,
         'consumerId': consumerId,
         'consumerName': consumerName,
         'accountNumber': accountNumber,
 
+        // CURRENT LOCATION AT VERIFICATION TIME
         'barangay': barangay,
         'municipality': municipality,
         'province': province,
         'address': address,
 
-        'previousReading': previousReading,
-        'currentReading': currentReading,
-        'consumption': consumption,
-        'ratePerKwh': ratePerKwh,
-        'totalAmount': totalAmount,
+        'previousReading':
+            previousReading,
+        'currentReading':
+            currentReading,
+        'consumption':
+            consumption,
+        'ratePerKwh':
+            ratePerKwh,
+        'totalAmount':
+            totalAmount,
 
-        'billingPeriod': billingPeriod,
+        'billingPeriod':
+            billingPeriod,
 
-        'dueDate': Timestamp.fromDate(
-          dueDate,
-        ),
+        'dueDate':
+            Timestamp.fromDate(dueDate),
 
-        'status': billStatus.toLowerCase(),
+        'status':
+            billStatus.toLowerCase(),
 
         'generatedBy':
-            _auth.currentUser?.email ?? 'Teller',
+            _auth.currentUser?.email ??
+                'Teller',
 
         'generatedAt':
             FieldValue.serverTimestamp(),
       };
 
-      final batch = _firestore.batch();
+      final batch =
+          _firestore.batch();
 
+      // ========================================================
       // CREATE BILL
+      // ========================================================
+
       batch.set(
         billRef,
         billData,
       );
 
+      // ========================================================
       // UPDATE READING
+      //
+      // Save the CURRENT location into the reading as well.
+      // This keeps the reading synchronized after verification.
+      // ========================================================
+
       batch.update(
         readingDoc.reference,
         {
           'status': 'Verified',
+
           'verifiedBy':
-              _auth.currentUser?.email ?? 'Teller',
+              _auth.currentUser?.email ??
+                  'Teller',
+
           'verifiedAt':
               FieldValue.serverTimestamp(),
 
-          'barangay': barangay,
-          'municipality': municipality,
-          'province': province,
-          'address': address,
+          'barangay':
+              barangay,
+          'municipality':
+              municipality,
+          'province':
+              province,
+          'address':
+              address,
 
-          'consumerId': consumerId,
-          'accountNumber': accountNumber,
+          'consumerId':
+              consumerId,
+          'accountNumber':
+              accountNumber,
         },
       );
 
@@ -766,9 +943,11 @@ class _VerifyMeterReadingsScreenState
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
-          backgroundColor: Colors.green,
+          backgroundColor:
+              Colors.green,
           content: Text(
             'Bill verified and generated successfully.',
           ),
@@ -777,9 +956,11 @@ class _VerifyMeterReadingsScreenState
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
-          backgroundColor: Colors.red,
+          backgroundColor:
+              Colors.red,
           content: Text(
             'Error: $e',
           ),
@@ -800,33 +981,36 @@ class _VerifyMeterReadingsScreenState
 
   Future<void> _showEditBillDialog(
     DocumentSnapshot readingDoc,
+    Map<String, dynamic> data,
   ) async {
-    final data =
-        readingDoc.data() as Map<String, dynamic>;
-
     final previousController =
         TextEditingController(
-      text: '${data['previousReading'] ?? 0}',
+      text:
+          '${data['previousReading'] ?? 0}',
     );
 
     final currentController =
         TextEditingController(
-      text: '${data['currentReading'] ?? 0}',
+      text:
+          '${data['currentReading'] ?? 0}',
     );
 
     final consumptionController =
         TextEditingController(
-      text: '${data['consumption'] ?? 0}',
+      text:
+          '${data['consumption'] ?? 0}',
     );
 
     final rateController =
         TextEditingController(
-      text: '${data['ratePerKwh'] ?? 0}',
+      text:
+          '${data['ratePerKwh'] ?? 0}',
     );
 
     final billingPeriodController =
         TextEditingController(
-      text: '${data['billingPeriod'] ?? ''}',
+      text:
+          '${data['billingPeriod'] ?? ''}',
     );
 
     double currentRate =
@@ -837,17 +1021,20 @@ class _VerifyMeterReadingsScreenState
 
     if (currentRate <= 0) {
       try {
-        final rateService = RateService();
+        final rateService =
+            RateService();
 
         currentRate =
-            await rateService.getCurrentRate();
+            await rateService
+                .getCurrentRate();
 
         rateController.text =
             currentRate.toString();
       } catch (_) {}
     }
 
-    String selectedStatus = 'unpaid';
+    String selectedStatus =
+        'unpaid';
 
     final firestoreStatus =
         _getFirestoreStatus(data);
@@ -859,9 +1046,13 @@ class _VerifyMeterReadingsScreenState
     }
 
     DateTime selectedDueDate =
-        _parseDate(data['dueDate']) ??
+        _parseDate(
+              data['dueDate'],
+            ) ??
             DateTime.now().add(
-              const Duration(days: 15),
+              const Duration(
+                days: 15,
+              ),
             );
 
     if (!mounted) return;
@@ -877,7 +1068,8 @@ class _VerifyMeterReadingsScreenState
             double calculateTotal() {
               final consumption =
                   double.tryParse(
-                        consumptionController.text,
+                        consumptionController
+                            .text,
                       ) ??
                       0;
 
@@ -887,201 +1079,287 @@ class _VerifyMeterReadingsScreenState
                       ) ??
                       0;
 
-              return consumption * rate;
+              return consumption *
+                  rate;
             }
 
             return AlertDialog(
               title: const Text(
                 'Edit and Verify Bill',
               ),
-              content: SingleChildScrollView(
+              content:
+                  SingleChildScrollView(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
                     Text(
-                      _getConsumerName(data),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
+                      _getConsumerName(
+                        data,
+                      ),
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
                         fontSize: 18,
                       ),
                     ),
 
-                    const SizedBox(height: 3),
+                    const SizedBox(
+                      height: 3,
+                    ),
 
                     Text(
-                      'Account #: ${_getAccountNumber(data)}',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
+                      'Account #: '
+                      '${_getAccountNumber(data)}',
+                      style:
+                          TextStyle(
+                        color: Colors
+                            .grey
+                            .shade600,
                       ),
                     ),
 
-                    _buildLocationDetails(data),
+                    _buildLocationDetails(
+                      data,
+                    ),
 
-                    const SizedBox(height: 15),
+                    const SizedBox(
+                      height: 15,
+                    ),
 
                     TextField(
-                      controller: previousController,
+                      controller:
+                          previousController,
                       keyboardType:
-                          const TextInputType.numberWithOptions(
+                          const TextInputType
+                              .numberWithOptions(
                         decimal: true,
                       ),
                       decoration:
                           const InputDecoration(
-                        labelText: 'Previous Reading',
-                        border: OutlineInputBorder(),
+                        labelText:
+                            'Previous Reading',
+                        border:
+                            OutlineInputBorder(),
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     TextField(
-                      controller: currentController,
+                      controller:
+                          currentController,
                       keyboardType:
-                          const TextInputType.numberWithOptions(
+                          const TextInputType
+                              .numberWithOptions(
                         decimal: true,
                       ),
                       decoration:
                           const InputDecoration(
-                        labelText: 'Current Reading',
-                        border: OutlineInputBorder(),
+                        labelText:
+                            'Current Reading',
+                        border:
+                            OutlineInputBorder(),
                       ),
                       onChanged: (_) {
                         final previous =
                             double.tryParse(
-                                  previousController.text,
+                                  previousController
+                                      .text,
                                 ) ??
                                 0;
 
                         final current =
                             double.tryParse(
-                                  currentController.text,
+                                  currentController
+                                      .text,
                                 ) ??
                                 0;
 
                         final consumption =
-                            current - previous;
+                            current -
+                                previous;
 
                         setDialogState(() {
-                          consumptionController.text =
-                              consumption.toStringAsFixed(2);
+                          consumptionController
+                                  .text =
+                              consumption
+                                  .toStringAsFixed(
+                            2,
+                          );
                         });
                       },
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     TextField(
-                      controller: consumptionController,
+                      controller:
+                          consumptionController,
                       keyboardType:
-                          const TextInputType.numberWithOptions(
+                          const TextInputType
+                              .numberWithOptions(
                         decimal: true,
                       ),
                       decoration:
                           const InputDecoration(
                         labelText:
                             'Consumption (kWh)',
-                        border: OutlineInputBorder(),
+                        border:
+                            OutlineInputBorder(),
                       ),
                       onChanged: (_) {
-                        setDialogState(() {});
+                        setDialogState(
+                          () {},
+                        );
                       },
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     TextField(
-                      controller: rateController,
+                      controller:
+                          rateController,
                       keyboardType:
-                          const TextInputType.numberWithOptions(
+                          const TextInputType
+                              .numberWithOptions(
                         decimal: true,
                       ),
                       decoration:
                           const InputDecoration(
-                        labelText: 'Rate per kWh',
-                        border: OutlineInputBorder(),
+                        labelText:
+                            'Rate per kWh',
+                        border:
+                            OutlineInputBorder(),
                       ),
                       onChanged: (_) {
-                        setDialogState(() {});
+                        setDialogState(
+                          () {},
+                        );
                       },
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     TextField(
                       controller:
                           billingPeriodController,
                       decoration:
                           const InputDecoration(
-                        labelText: 'Billing Period',
-                        border: OutlineInputBorder(),
+                        labelText:
+                            'Billing Period',
+                        border:
+                            OutlineInputBorder(),
                         hintText:
                             'Example: August 2026',
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
-                    DropdownButtonFormField<String>(
-                      value: selectedStatus,
+                    DropdownButtonFormField<
+                        String>(
+                      value:
+                          selectedStatus,
                       decoration:
                           const InputDecoration(
-                        labelText: 'Bill Status',
-                        border: OutlineInputBorder(),
+                        labelText:
+                            'Bill Status',
+                        border:
+                            OutlineInputBorder(),
                       ),
-                      items: const [
+                      items:
+                          const [
                         DropdownMenuItem(
-                          value: 'unpaid',
-                          child: Text('Unpaid'),
+                          value:
+                              'unpaid',
+                          child:
+                              Text(
+                            'Unpaid',
+                          ),
                         ),
                         DropdownMenuItem(
-                          value: 'paid',
-                          child: Text('Paid'),
+                          value:
+                              'paid',
+                          child:
+                              Text(
+                            'Paid',
+                          ),
                         ),
                       ],
-                      onChanged: (value) {
-                        setDialogState(() {
-                          selectedStatus =
-                              value ?? 'unpaid';
-                        });
+                      onChanged:
+                          (value) {
+                        setDialogState(
+                          () {
+                            selectedStatus =
+                                value ??
+                                    'unpaid';
+                          },
+                        );
                       },
                     ),
 
-                    const SizedBox(height: 15),
+                    const SizedBox(
+                      height: 15,
+                    ),
 
                     ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
+                      contentPadding:
+                          EdgeInsets.zero,
+                      title:
+                          const Text(
                         'Due Date',
                       ),
-                      subtitle: Text(
+                      subtitle:
+                          Text(
                         '${selectedDueDate.month}/'
                         '${selectedDueDate.day}/'
                         '${selectedDueDate.year}',
                       ),
-                      trailing: const Icon(
-                        Icons.calendar_today,
+                      trailing:
+                          const Icon(
+                        Icons
+                            .calendar_today,
                       ),
-                      onTap: () async {
+                      onTap:
+                          () async {
                         final picked =
                             await showDatePicker(
-                          context: context,
+                          context:
+                              context,
                           initialDate:
                               selectedDueDate,
                           firstDate:
                               DateTime.now(),
                           lastDate:
-                              DateTime.now().add(
+                              DateTime.now()
+                                  .add(
                             const Duration(
-                              days: 365,
+                              days:
+                                  365,
                             ),
                           ),
                         );
 
-                        if (picked != null) {
-                          setDialogState(() {
-                            selectedDueDate =
-                                picked;
-                          });
+                        if (picked !=
+                            null) {
+                          setDialogState(
+                            () {
+                              selectedDueDate =
+                                  picked;
+                            },
+                          );
                         }
                       },
                     ),
@@ -1090,19 +1368,28 @@ class _VerifyMeterReadingsScreenState
 
                     const Text(
                       'Total Amount',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                        fontWeight:
+                            FontWeight.w500,
                       ),
                     ),
 
-                    const SizedBox(height: 5),
+                    const SizedBox(
+                      height: 5,
+                    ),
 
                     Text(
                       '₱${calculateTotal().toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: Color(0xFFD32F2F),
-                        fontWeight: FontWeight.bold,
+                      style:
+                          const TextStyle(
+                        color:
+                            Color(
+                          0xFFD32F2F,
+                        ),
+                        fontWeight:
+                            FontWeight.bold,
                         fontSize: 25,
                       ),
                     ),
@@ -1116,7 +1403,8 @@ class _VerifyMeterReadingsScreenState
                       dialogContext,
                     );
                   },
-                  child: const Text(
+                  child:
+                      const Text(
                     'Cancel',
                   ),
                 ),
@@ -1125,37 +1413,46 @@ class _VerifyMeterReadingsScreenState
                   style:
                       ElevatedButton.styleFrom(
                     backgroundColor:
-                        const Color(0xFFD32F2F),
+                        const Color(
+                      0xFFD32F2F,
+                    ),
                     foregroundColor:
                         Colors.white,
                   ),
-                  onPressed: () async {
+                  onPressed:
+                      () async {
                     final previous =
                         double.tryParse(
-                              previousController.text,
+                              previousController
+                                  .text,
                             ) ??
                             0;
 
                     final current =
                         double.tryParse(
-                              currentController.text,
+                              currentController
+                                  .text,
                             ) ??
                             0;
 
                     final consumption =
                         double.tryParse(
-                              consumptionController.text,
+                              consumptionController
+                                  .text,
                             ) ??
                             0;
 
                     final rate =
                         double.tryParse(
-                              rateController.text,
+                              rateController
+                                  .text,
                             ) ??
                             0;
 
-                    if (current < previous) {
-                      ScaffoldMessenger.of(
+                    if (current <
+                        previous) {
+                      ScaffoldMessenger
+                              .of(
                         context,
                       ).showSnackBar(
                         const SnackBar(
@@ -1167,8 +1464,10 @@ class _VerifyMeterReadingsScreenState
                       return;
                     }
 
-                    if (consumption < 0) {
-                      ScaffoldMessenger.of(
+                    if (consumption <
+                        0) {
+                      ScaffoldMessenger
+                              .of(
                         context,
                       ).showSnackBar(
                         const SnackBar(
@@ -1181,7 +1480,8 @@ class _VerifyMeterReadingsScreenState
                     }
 
                     if (rate <= 0) {
-                      ScaffoldMessenger.of(
+                      ScaffoldMessenger
+                              .of(
                         context,
                       ).showSnackBar(
                         const SnackBar(
@@ -1198,20 +1498,30 @@ class _VerifyMeterReadingsScreenState
                     );
 
                     await _verifyReading(
-                      readingDoc: readingDoc,
-                      previousReading: previous,
-                      currentReading: current,
-                      consumption: consumption,
-                      ratePerKwh: rate,
+                      readingDoc:
+                          readingDoc,
+                      readingData:
+                          data,
+                      previousReading:
+                          previous,
+                      currentReading:
+                          current,
+                      consumption:
+                          consumption,
+                      ratePerKwh:
+                          rate,
                       billingPeriod:
                           billingPeriodController
                               .text
                               .trim(),
-                      dueDate: selectedDueDate,
-                      billStatus: selectedStatus,
+                      dueDate:
+                          selectedDueDate,
+                      billStatus:
+                          selectedStatus,
                     );
                   },
-                  child: const Text(
+                  child:
+                      const Text(
                     'SAVE & VERIFY',
                   ),
                 ),
@@ -1237,7 +1547,8 @@ class _VerifyMeterReadingsScreenState
     required IconData icon,
     required String value,
     required List<String> items,
-    required ValueChanged<String> onChanged,
+    required ValueChanged<String>
+        onChanged,
   }) {
     return Container(
       height: 48,
@@ -1245,45 +1556,59 @@ class _VerifyMeterReadingsScreenState
           const EdgeInsets.symmetric(
         horizontal: 12,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.grey.shade300,
+          color:
+              Colors.grey.shade300,
         ),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
+      child:
+          DropdownButtonHideUnderline(
+        child:
+            DropdownButton<String>(
           value: value,
           isExpanded: true,
           isDense: true,
           icon: const Icon(
-            Icons.keyboard_arrow_down,
+            Icons
+                .keyboard_arrow_down,
             size: 22,
             color: Colors.grey,
           ),
-          style: const TextStyle(
-            color: Colors.black87,
+          style:
+              const TextStyle(
+            color:
+                Colors.black87,
             fontSize: 14,
-            fontWeight: FontWeight.w500,
+            fontWeight:
+                FontWeight.w500,
           ),
-          items: items.map((item) {
-            return DropdownMenuItem<String>(
+          items:
+              items.map((item) {
+            return DropdownMenuItem<
+                String>(
               value: item,
               child: Row(
                 children: [
                   Icon(
                     icon,
                     size: 19,
-                    color: Colors.orange,
+                    color:
+                        Colors.orange,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(
+                    width: 8,
+                  ),
                   Expanded(
                     child: Text(
                       item,
                       overflow:
-                          TextOverflow.ellipsis,
+                          TextOverflow
+                              .ellipsis,
                     ),
                   ),
                 ],
@@ -1307,7 +1632,8 @@ class _VerifyMeterReadingsScreenState
   Widget _buildStatusFilter() {
     return _buildCompactDropdown(
       icon: Icons.tune,
-      value: _selectedStatus,
+      value:
+          _selectedStatus,
       items: const [
         'All',
         'Pending',
@@ -1316,7 +1642,8 @@ class _VerifyMeterReadingsScreenState
       ],
       onChanged: (value) {
         setState(() {
-          _selectedStatus = value;
+          _selectedStatus =
+              value;
         });
       },
     );
@@ -1328,15 +1655,18 @@ class _VerifyMeterReadingsScreenState
 
   Widget _buildMonthFilter() {
     return _buildCompactDropdown(
-      icon: Icons.calendar_month,
-      value: _selectedMonth,
+      icon:
+          Icons.calendar_month,
+      value:
+          _selectedMonth,
       items: [
         'All Months',
         ..._monthNames,
       ],
       onChanged: (value) {
         setState(() {
-          _selectedMonth = value;
+          _selectedMonth =
+              value;
         });
       },
     );
@@ -1351,19 +1681,24 @@ class _VerifyMeterReadingsScreenState
         getSorsogonSecondDistrictMunicipalities();
 
     return _buildLocationDropdown(
-      icon: Icons.location_city,
-      value: _selectedMunicipality,
+      icon:
+          Icons.location_city,
+      value:
+          _selectedMunicipality,
       items: [
         'All Municipalities',
         ...municipalities,
       ],
       enabled: true,
-      hint: 'All Municipalities',
+      hint:
+          'All Municipalities',
       onChanged: (value) {
         setState(() {
-          _selectedMunicipality = value;
+          _selectedMunicipality =
+              value;
 
-          if (value == 'All Municipalities') {
+          if (value ==
+              'All Municipalities') {
             _selectedBarangay =
                 'Select Municipality First';
           } else {
@@ -1386,7 +1721,8 @@ class _VerifyMeterReadingsScreenState
 
     if (!municipalitySelected) {
       return _buildLocationDropdown(
-        icon: Icons.location_on,
+        icon:
+            Icons.location_on,
         value:
             'Select Municipality First',
         items: const [
@@ -1405,17 +1741,21 @@ class _VerifyMeterReadingsScreenState
     );
 
     return _buildLocationDropdown(
-      icon: Icons.location_on,
-      value: _selectedBarangay,
+      icon:
+          Icons.location_on,
+      value:
+          _selectedBarangay,
       items: [
         'All Barangays',
         ...barangays,
       ],
       enabled: true,
-      hint: 'All Barangays',
+      hint:
+          'All Barangays',
       onChanged: (value) {
         setState(() {
-          _selectedBarangay = value;
+          _selectedBarangay =
+              value;
         });
       },
     );
@@ -1431,7 +1771,8 @@ class _VerifyMeterReadingsScreenState
     required List<String> items,
     required bool enabled,
     required String hint,
-    required ValueChanged<String> onChanged,
+    required ValueChanged<String>
+        onChanged,
   }) {
     return Container(
       height: 64,
@@ -1439,18 +1780,22 @@ class _VerifyMeterReadingsScreenState
           const EdgeInsets.symmetric(
         horizontal: 16,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: enabled
             ? Colors.grey.shade50
             : Colors.grey.shade100,
         borderRadius:
             BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.grey.shade300,
+          color:
+              Colors.grey.shade300,
         ),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
+      child:
+          DropdownButtonHideUnderline(
+        child:
+            DropdownButton<String>(
           value:
               items.contains(value)
                   ? value
@@ -1466,25 +1811,33 @@ class _VerifyMeterReadingsScreenState
                     ? Colors.orange
                     : Colors.grey,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(
+                width: 12,
+              ),
               Expanded(
                 child: Text(
                   hint,
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 16,
                     color: enabled
-                        ? Colors.black87
-                        : Colors.grey,
+                        ? Colors
+                            .black87
+                        : Colors
+                            .grey,
                   ),
                   overflow:
-                      TextOverflow.ellipsis,
+                      TextOverflow
+                          .ellipsis,
                 ),
               ),
             ],
           ),
           icon: const Icon(
-            Icons.keyboard_arrow_down,
-            color: Colors.grey,
+            Icons
+                .keyboard_arrow_down,
+            color:
+                Colors.grey,
           ),
           style: TextStyle(
             color: enabled
@@ -1492,26 +1845,30 @@ class _VerifyMeterReadingsScreenState
                 : Colors.grey,
             fontSize: 16,
           ),
-          items: items.map((item) {
-            return DropdownMenuItem<String>(
+          items:
+              items.map((item) {
+            return DropdownMenuItem<
+                String>(
               value: item,
               child: Row(
                 children: [
                   Icon(
                     icon,
                     size: 21,
-                    color:
-                        item ==
-                                'Select Municipality First'
-                            ? Colors.grey
-                            : Colors.orange,
+                    color: item ==
+                            'Select Municipality First'
+                        ? Colors.grey
+                        : Colors.orange,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(
+                    width: 12,
+                  ),
                   Expanded(
                     child: Text(
                       item,
                       overflow:
-                          TextOverflow.ellipsis,
+                          TextOverflow
+                              .ellipsis,
                     ),
                   ),
                 ],
@@ -1520,8 +1877,11 @@ class _VerifyMeterReadingsScreenState
           }).toList(),
           onChanged: enabled
               ? (value) {
-                  if (value != null) {
-                    onChanged(value);
+                  if (value !=
+                      null) {
+                    onChanged(
+                      value,
+                    );
                   }
                 }
               : null,
@@ -1536,7 +1896,8 @@ class _VerifyMeterReadingsScreenState
 
   Widget _buildFilterBar() {
     return Container(
-      color: const Color(0xFFFFF8E7),
+      color:
+          const Color(0xFFFFF8E7),
       padding:
           const EdgeInsets.fromLTRB(
         16,
@@ -1549,51 +1910,73 @@ class _VerifyMeterReadingsScreenState
           Row(
             children: [
               Expanded(
-                child: _buildStatusFilter(),
+                child:
+                    _buildStatusFilter(),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
               Expanded(
-                child: _buildMonthFilter(),
+                child:
+                    _buildMonthFilter(),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
               Container(
                 height: 48,
                 width: 48,
                 decoration:
                     BoxDecoration(
-                  color:
-                      Colors.grey.shade50,
+                  color: Colors
+                      .grey.shade50,
                   borderRadius:
-                      BorderRadius.circular(
+                      BorderRadius
+                          .circular(
                     14,
                   ),
                   border:
                       Border.all(
-                    color:
-                        Colors.grey.shade300,
+                    color: Colors
+                        .grey.shade300,
                   ),
                 ),
                 child:
-                    PopupMenuButton<String>(
-                  tooltip: 'Sort',
-                  icon: const Icon(
+                    PopupMenuButton<
+                        String>(
+                  tooltip:
+                      'Sort',
+                  icon:
+                      const Icon(
                     Icons.sort,
-                    color: Colors.orange,
+                    color:
+                        Colors.orange,
                   ),
-                  onSelected: (value) {
+                  onSelected:
+                      (value) {
                     setState(() {
-                      _sortOption = value;
+                      _sortOption =
+                          value;
                     });
                   },
-                  itemBuilder: (context) {
+                  itemBuilder:
+                      (context) {
                     return const [
                       PopupMenuItem(
-                        value: 'Newest',
-                        child: Text('Newest'),
+                        value:
+                            'Newest',
+                        child:
+                            Text(
+                          'Newest',
+                        ),
                       ),
                       PopupMenuItem(
-                        value: 'Oldest',
-                        child: Text('Oldest'),
+                        value:
+                            'Oldest',
+                        child:
+                            Text(
+                          'Oldest',
+                        ),
                       ),
                     ];
                   },
@@ -1602,11 +1985,15 @@ class _VerifyMeterReadingsScreenState
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
 
           _buildMunicipalityFilter(),
 
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
 
           _buildBarangayFilter(),
         ],
@@ -1620,7 +2007,7 @@ class _VerifyMeterReadingsScreenState
 
   Widget _buildFilterSummary(
     List<QueryDocumentSnapshot> bills,
-    List<QueryDocumentSnapshot> readings,
+    List<_ReadingItem> readings,
   ) {
     int paidCount = 0;
     int unpaidCount = 0;
@@ -1630,7 +2017,8 @@ class _VerifyMeterReadingsScreenState
 
     for (final doc in bills) {
       final data =
-          doc.data() as Map<String, dynamic>;
+          doc.data()
+              as Map<String, dynamic>;
 
       final status =
           _getFirestoreStatus(data);
@@ -1644,7 +2032,8 @@ class _VerifyMeterReadingsScreenState
       if (status == 'paid') {
         paidCount++;
         paidAmount += amount;
-      } else if (status == 'unpaid') {
+      } else if (status ==
+          'unpaid') {
         unpaidCount++;
         unpaidAmount += amount;
       }
@@ -1652,13 +2041,19 @@ class _VerifyMeterReadingsScreenState
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+      padding:
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.grey.shade50,
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(
+          14,
+        ),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
       ),
       child: Column(
@@ -1668,15 +2063,20 @@ class _VerifyMeterReadingsScreenState
           Row(
             children: [
               const Icon(
-                Icons.filter_alt_outlined,
+                Icons
+                    .filter_alt_outlined,
                 size: 18,
-                color: Colors.orange,
+                color:
+                    Colors.orange,
               ),
-              const SizedBox(width: 7),
+              const SizedBox(
+                width: 7,
+              ),
               Expanded(
                 child: Text(
                   _getFilterSummaryTitle(),
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontWeight:
                         FontWeight.bold,
                   ),
@@ -1685,75 +2085,99 @@ class _VerifyMeterReadingsScreenState
             ],
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 10,
+          ),
 
           Row(
             children: [
               Expanded(
-                child: _summaryItem(
+                child:
+                    _summaryItem(
                   'Pending',
-                  readings.length.toString(),
+                  readings.length
+                      .toString(),
                   Colors.blue,
                 ),
               ),
               Expanded(
-                child: _summaryItem(
+                child:
+                    _summaryItem(
                   'Paid',
-                  paidCount.toString(),
+                  paidCount
+                      .toString(),
                   Colors.green,
                 ),
               ),
               Expanded(
-                child: _summaryItem(
+                child:
+                    _summaryItem(
                   'Unpaid',
-                  unpaidCount.toString(),
+                  unpaidCount
+                      .toString(),
                   Colors.orange,
                 ),
               ),
             ],
           ),
 
-          const Divider(height: 20),
+          const Divider(
+            height: 20,
+          ),
 
           Row(
             mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+                MainAxisAlignment
+                    .spaceBetween,
             children: [
               const Text(
                 'Paid Amount',
-                style: TextStyle(
-                  color: Colors.grey,
+                style:
+                    TextStyle(
+                  color:
+                      Colors.grey,
                 ),
               ),
               Text(
                 '₱${paidAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.green,
+                style:
+                    const TextStyle(
+                  color:
+                      Colors.green,
                   fontWeight:
-                      FontWeight.bold,
+                      FontWeight
+                          .bold,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 5),
+          const SizedBox(
+            height: 5,
+          ),
 
           Row(
             mainAxisAlignment:
-                MainAxisAlignment.spaceBetween,
+                MainAxisAlignment
+                    .spaceBetween,
             children: [
               const Text(
                 'Unpaid Amount',
-                style: TextStyle(
-                  color: Colors.grey,
+                style:
+                    TextStyle(
+                  color:
+                      Colors.grey,
                 ),
               ),
               Text(
                 '₱${unpaidAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  color: Colors.orange,
+                style:
+                    const TextStyle(
+                  color:
+                      Colors.orange,
                   fontWeight:
-                      FontWeight.bold,
+                      FontWeight
+                          .bold,
                 ),
               ),
             ],
@@ -1782,8 +2206,11 @@ class _VerifyMeterReadingsScreenState
       );
     }
 
-    if (_selectedMonth != 'All Months') {
-      parts.add(_selectedMonth);
+    if (_selectedMonth !=
+        'All Months') {
+      parts.add(
+        _selectedMonth,
+      );
     }
 
     if (parts.isEmpty) {
@@ -1809,13 +2236,15 @@ class _VerifyMeterReadingsScreenState
             color: color,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(
+          height: 2,
+        ),
         Text(
           title,
           style: TextStyle(
             fontSize: 12,
-            color:
-                Colors.grey.shade600,
+            color: Colors
+                .grey.shade600,
           ),
         ),
       ],
@@ -1830,7 +2259,8 @@ class _VerifyMeterReadingsScreenState
     QueryDocumentSnapshot doc,
   ) {
     final data =
-        doc.data() as Map<String, dynamic>;
+        doc.data()
+            as Map<String, dynamic>;
 
     final status =
         _getDisplayStatus(
@@ -1861,7 +2291,9 @@ class _VerifyMeterReadingsScreenState
     );
 
     final dueDate =
-        _parseDate(data['dueDate']);
+        _parseDate(
+      data['dueDate'],
+    );
 
     return Card(
       elevation: 3,
@@ -1871,7 +2303,9 @@ class _VerifyMeterReadingsScreenState
       ),
       child: Padding(
         padding:
-            const EdgeInsets.all(16),
+            const EdgeInsets.all(
+          16,
+        ),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -1880,36 +2314,46 @@ class _VerifyMeterReadingsScreenState
               children: [
                 Expanded(
                   child: Text(
-                    _getConsumerName(data),
+                    _getConsumerName(
+                      data,
+                    ),
                     style:
                         const TextStyle(
                       fontSize: 18,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                     ),
                   ),
                 ),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 10,
                     vertical: 6,
                   ),
                   decoration:
                       BoxDecoration(
                     color: statusColor
-                        .withOpacity(0.12),
+                        .withOpacity(
+                      0.12,
+                    ),
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       20,
                     ),
                   ),
                   child: Text(
                     status,
-                    style: TextStyle(
-                      color: statusColor,
+                    style:
+                        TextStyle(
+                      color:
+                          statusColor,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                       fontSize: 12,
                     ),
                   ),
@@ -1917,7 +2361,9 @@ class _VerifyMeterReadingsScreenState
               ],
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(
+              height: 10,
+            ),
 
             Text(
               'Account Number: '
@@ -1929,18 +2375,25 @@ class _VerifyMeterReadingsScreenState
               '$billingPeriod',
             ),
 
-            _buildLocationDetails(data),
+            _buildLocationDetails(
+              data,
+            ),
 
-            const Divider(height: 24),
+            const Divider(
+              height: 24,
+            ),
 
             Row(
               mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  MainAxisAlignment
+                      .spaceBetween,
               children: [
                 const Text(
                   'Consumption',
-                  style: TextStyle(
-                    color: Colors.grey,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.grey,
                   ),
                 ),
                 Text(
@@ -1948,22 +2401,28 @@ class _VerifyMeterReadingsScreenState
                   style:
                       const TextStyle(
                     fontWeight:
-                        FontWeight.bold,
+                        FontWeight
+                            .bold,
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(
+              height: 6,
+            ),
 
             Row(
               mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  MainAxisAlignment
+                      .spaceBetween,
               children: [
                 const Text(
                   'Total Amount',
-                  style: TextStyle(
-                    color: Colors.grey,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.grey,
                   ),
                 ),
                 Text(
@@ -1971,23 +2430,29 @@ class _VerifyMeterReadingsScreenState
                   style:
                       const TextStyle(
                     fontWeight:
-                        FontWeight.bold,
+                        FontWeight
+                            .bold,
                     fontSize: 17,
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(
+              height: 6,
+            ),
 
             Row(
               mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                  MainAxisAlignment
+                      .spaceBetween,
               children: [
                 const Text(
                   'Due Date',
-                  style: TextStyle(
-                    color: Colors.grey,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.grey,
                   ),
                 ),
                 Text(
@@ -2000,35 +2465,48 @@ class _VerifyMeterReadingsScreenState
               ],
             ),
 
-            if (status == 'Paid') ...[
-              const SizedBox(height: 12),
+            if (status ==
+                'Paid') ...[
+              const SizedBox(
+                height: 12,
+              ),
               Container(
-                width: double.infinity,
+                width:
+                    double.infinity,
                 padding:
-                    const EdgeInsets.all(10),
+                    const EdgeInsets
+                        .all(10),
                 decoration:
                     BoxDecoration(
-                  color:
-                      Colors.green.shade50,
+                  color: Colors
+                      .green.shade50,
                   borderRadius:
-                      BorderRadius.circular(
+                      BorderRadius
+                          .circular(
                     8,
                   ),
                 ),
                 child: const Row(
                   children: [
                     Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
+                      Icons
+                          .check_circle,
+                      color:
+                          Colors.green,
                       size: 20,
                     ),
-                    SizedBox(width: 8),
+                    SizedBox(
+                      width: 8,
+                    ),
                     Text(
                       'Payment received',
-                      style: TextStyle(
-                        color: Colors.green,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.green,
                         fontWeight:
-                            FontWeight.w600,
+                            FontWeight
+                                .w600,
                       ),
                     ),
                   ],
@@ -2046,11 +2524,13 @@ class _VerifyMeterReadingsScreenState
   // ============================================================
 
   Widget _buildPendingCard(
-    QueryDocumentSnapshot readingDoc,
+    _ReadingItem item,
   ) {
+    final readingDoc =
+        item.document;
+
     final data =
-        readingDoc.data()
-            as Map<String, dynamic>;
+        item.data;
 
     final isProcessing =
         _processingDocId ==
@@ -2082,7 +2562,9 @@ class _VerifyMeterReadingsScreenState
       ),
       child: Padding(
         padding:
-            const EdgeInsets.all(16),
+            const EdgeInsets.all(
+          16,
+        ),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -2091,36 +2573,48 @@ class _VerifyMeterReadingsScreenState
               children: [
                 Expanded(
                   child: Text(
-                    _getConsumerName(data),
+                    _getConsumerName(
+                      data,
+                    ),
                     style:
                         const TextStyle(
                       fontSize: 18,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                     ),
                   ),
                 ),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 10,
                     vertical: 6,
                   ),
                   decoration:
                       BoxDecoration(
-                    color: Colors.blue
-                        .withOpacity(0.12),
+                    color: Colors
+                        .blue
+                        .withOpacity(
+                      0.12,
+                    ),
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       20,
                     ),
                   ),
-                  child: const Text(
+                  child:
+                      const Text(
                     'Pending',
-                    style: TextStyle(
-                      color: Colors.blue,
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.blue,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                       fontSize: 12,
                     ),
                   ),
@@ -2128,7 +2622,9 @@ class _VerifyMeterReadingsScreenState
               ],
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(
+              height: 10,
+            ),
 
             Text(
               'Account Number: '
@@ -2140,9 +2636,14 @@ class _VerifyMeterReadingsScreenState
               '${data['billingPeriod'] ?? 'N/A'}',
             ),
 
-            _buildLocationDetails(data),
+            // CURRENT PROFILE LOCATION
+            _buildLocationDetails(
+              data,
+            ),
 
-            const SizedBox(height: 12),
+            const SizedBox(
+              height: 12,
+            ),
 
             const Divider(),
 
@@ -2161,19 +2662,24 @@ class _VerifyMeterReadingsScreenState
               '${consumption.toStringAsFixed(2)} kWh',
             ),
 
-            const SizedBox(height: 15),
+            const SizedBox(
+              height: 15,
+            ),
 
             SizedBox(
-              width: double.infinity,
+              width:
+                  double.infinity,
               height: 50,
               child:
                   ElevatedButton.icon(
                 onPressed:
-                    _processingDocId != null
+                    _processingDocId !=
+                            null
                         ? null
                         : () async {
                             await _showEditBillDialog(
                               readingDoc,
+                              data,
                             );
                           },
                 style:
@@ -2191,8 +2697,10 @@ class _VerifyMeterReadingsScreenState
                         height: 18,
                         child:
                             CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+                          strokeWidth:
+                              2,
+                          color:
+                              Colors.white,
                         ),
                       )
                     : const Icon(
@@ -2220,11 +2728,13 @@ class _VerifyMeterReadingsScreenState
 
     switch (_selectedStatus) {
       case 'Paid':
-        message = 'No paid bills found';
+        message =
+            'No paid bills found';
         break;
 
       case 'Unpaid':
-        message = 'No unpaid bills found';
+        message =
+            'No unpaid bills found';
         break;
 
       case 'Pending':
@@ -2237,8 +2747,10 @@ class _VerifyMeterReadingsScreenState
             'No bills or readings found';
     }
 
-    if (_selectedMonth != 'All Months') {
-      message += '\nfor $_selectedMonth';
+    if (_selectedMonth !=
+        'All Months') {
+      message +=
+          '\nfor $_selectedMonth';
     }
 
     if (_selectedMunicipality !=
@@ -2258,19 +2770,25 @@ class _VerifyMeterReadingsScreenState
     return Center(
       child: Column(
         mainAxisAlignment:
-            MainAxisAlignment.center,
+            MainAxisAlignment
+                .center,
         children: [
           Icon(
-            Icons.receipt_long_outlined,
+            Icons
+                .receipt_long_outlined,
             size: 70,
-            color: Colors.grey.shade400,
+            color:
+                Colors.grey.shade400,
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(
+            height: 15,
+          ),
 
           Text(
             message,
-            textAlign: TextAlign.center,
+            textAlign:
+                TextAlign.center,
             style:
                 const TextStyle(
               fontSize: 18,
@@ -2279,12 +2797,15 @@ class _VerifyMeterReadingsScreenState
             ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
 
           Text(
             'Try changing the filters.',
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color:
+                  Colors.grey.shade600,
             ),
           ),
         ],
@@ -2294,11 +2815,18 @@ class _VerifyMeterReadingsScreenState
 
   // ============================================================
   // FIRESTORE DATA VIEW
+  //
+  // IMPORTANT FIX:
+  //
+  // Pending meter readings are matched to the CURRENT consumer
+  // profile in the users collection.
+  //
+  // Bills continue using their own saved location.
   // ============================================================
 
   Widget _buildFirestoreDataView() {
     return StreamBuilder<QuerySnapshot>(
-      // READ CURRENT FIRESTORE BILLS DIRECTLY
+      // Bills keep their saved location.
       stream: _firestore
           .collection('bills')
           .snapshots(),
@@ -2319,7 +2847,9 @@ class _VerifyMeterReadingsScreenState
           return Center(
             child: Padding(
               padding:
-                  const EdgeInsets.all(20),
+                  const EdgeInsets.all(
+                20,
+              ),
               child: Text(
                 'Error loading bills:\n'
                 '${billSnapshot.error}',
@@ -2331,13 +2861,14 @@ class _VerifyMeterReadingsScreenState
         }
 
         final bills =
-            billSnapshot.data?.docs ?? [];
+            billSnapshot.data?.docs ??
+                [];
 
         return StreamBuilder<QuerySnapshot>(
-          // READ CURRENT FIRESTORE PENDING
-          // READINGS DIRECTLY
+          // Only pending readings.
           stream: _firestore
-              .collection('meter_readings')
+              .collection(
+                  'meter_readings')
               .where(
                 'status',
                 isEqualTo: 'Pending',
@@ -2348,7 +2879,8 @@ class _VerifyMeterReadingsScreenState
             context,
             readingSnapshot,
           ) {
-            if (readingSnapshot.connectionState ==
+            if (readingSnapshot
+                    .connectionState ==
                 ConnectionState.waiting) {
               return const Center(
                 child:
@@ -2360,7 +2892,8 @@ class _VerifyMeterReadingsScreenState
               return Center(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(20),
+                      const EdgeInsets
+                          .all(20),
                   child: Text(
                     'Error loading meter readings:\n'
                     '${readingSnapshot.error}',
@@ -2372,126 +2905,243 @@ class _VerifyMeterReadingsScreenState
             }
 
             final readings =
-                readingSnapshot.data?.docs ?? [];
+                readingSnapshot.data
+                        ?.docs ??
+                    [];
 
             // ==================================================
-            // FILTER CURRENT FIRESTORE DATA
+            // CURRENT CONSUMER PROFILES
             // ==================================================
 
-            final filteredBills =
-                _filterDocuments(
-              bills,
-              isBill: true,
-            );
+            return StreamBuilder<QuerySnapshot>(
+              stream: _firestore
+                  .collection('users')
+                  .snapshots(),
 
-            final filteredReadings =
-                _filterDocuments(
-              readings,
-              isBill: false,
-            );
+              builder: (
+                context,
+                userSnapshot,
+              ) {
+                if (userSnapshot
+                        .connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child:
+                        CircularProgressIndicator(),
+                  );
+                }
 
-            // ==================================================
-            // SORT
-            // ==================================================
-
-            final sortedBills =
-                _sortDocuments(
-              filteredBills,
-              isBill: true,
-            );
-
-            final sortedReadings =
-                _sortDocuments(
-              filteredReadings,
-              isBill: false,
-            );
-
-            // ==================================================
-            // EMPTY
-            // ==================================================
-
-            if (sortedBills.isEmpty &&
-                sortedReadings.isEmpty) {
-              return _buildEmptyState();
-            }
-
-            // ==================================================
-            // DISPLAY
-            // ==================================================
-
-            return ListView(
-              padding:
-                  const EdgeInsets.fromLTRB(
-                15,
-                5,
-                15,
-                20,
-              ),
-              children: [
-                _buildFilterSummary(
-                  sortedBills,
-                  sortedReadings,
-                ),
-
-                const SizedBox(height: 10),
-
-                // ==================================================
-                // PENDING
-                // ==================================================
-
-                if (sortedReadings.isNotEmpty) ...[
-                  const Padding(
-                    padding:
-                        EdgeInsets.only(
-                      left: 2,
-                      bottom: 8,
-                    ),
-                    child: Text(
-                      'PENDING METER READINGS',
-                      style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 14,
-                        color: Colors.blue,
+                if (userSnapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding:
+                          const EdgeInsets
+                              .all(20),
+                      child: Text(
+                        'Error loading consumer profiles:\n'
+                        '${userSnapshot.error}',
+                        textAlign:
+                            TextAlign.center,
                       ),
                     ),
-                  ),
+                  );
+                }
 
-                  ...sortedReadings.map(
-                    (doc) =>
-                        _buildPendingCard(doc),
-                  ),
-                ],
+                final users =
+                    userSnapshot.data
+                            ?.docs ??
+                        [];
 
                 // ==================================================
-                // BILLS
+                // BUILD READING ITEMS USING CURRENT PROFILE
                 // ==================================================
 
-                if (sortedBills.isNotEmpty) ...[
-                  const Padding(
-                    padding:
-                        EdgeInsets.only(
-                      left: 2,
-                      top: 8,
-                      bottom: 8,
+                final readingItems =
+                    <_ReadingItem>[];
+
+                for (final readingDoc
+                    in readings) {
+                  final originalData =
+                      readingDoc.data()
+                          as Map<String,
+                              dynamic>;
+
+                  // Find current consumer profile.
+                  final profile =
+                      _findCurrentProfile(
+                    originalData,
+                    users,
+                  );
+
+                  // Create temporary data containing the
+                  // CURRENT profile location.
+                  final currentData =
+                      _getCurrentReadingData(
+                    originalData,
+                    profile,
+                  );
+
+                  // Apply month filter.
+                  if (!_matchesMonth(
+                    currentData,
+                    isBill: false,
+                  )) {
+                    continue;
+                  }
+
+                  // Apply CURRENT location filter.
+                  if (!_matchesLocation(
+                    currentData,
+                  )) {
+                    continue;
+                  }
+
+                  // Apply pending status filter.
+                  if (!_matchesReadingStatus(
+                    currentData,
+                  )) {
+                    continue;
+                  }
+
+                  readingItems.add(
+                    _ReadingItem(
+                      document:
+                          readingDoc,
+                      data:
+                          currentData,
                     ),
-                    child: Text(
-                      'BILL MONITORING',
-                      style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 14,
-                        color: Colors.orange,
+                  );
+                }
+
+                // ==================================================
+                // FILTER BILLS
+                // ==================================================
+
+                final filteredBills =
+                    _filterDocuments(
+                  bills,
+                  isBill: true,
+                );
+
+                // ==================================================
+                // SORT
+                // ==================================================
+
+                final sortedBills =
+                    _sortDocuments(
+                  filteredBills,
+                  isBill: true,
+                );
+
+                final sortedReadings =
+                    _sortReadingItems(
+                  readingItems,
+                );
+
+                // ==================================================
+                // EMPTY
+                // ==================================================
+
+                if (sortedBills.isEmpty &&
+                    sortedReadings.isEmpty) {
+                  return _buildEmptyState();
+                }
+
+                // ==================================================
+                // DISPLAY
+                // ==================================================
+
+                return ListView(
+                  padding:
+                      const EdgeInsets.fromLTRB(
+                    15,
+                    5,
+                    15,
+                    20,
+                  ),
+                  children: [
+                    _buildFilterSummary(
+                      sortedBills,
+                      sortedReadings,
+                    ),
+
+                    const SizedBox(
+                      height: 10,
+                    ),
+
+                    // ==================================================
+                    // PENDING
+                    // ==================================================
+
+                    if (sortedReadings
+                        .isNotEmpty) ...[
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(
+                          left: 2,
+                          bottom: 8,
+                        ),
+                        child:
+                            Text(
+                          'PENDING METER READINGS',
+                          style:
+                              TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            fontSize:
+                                14,
+                            color:
+                                Colors.blue,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
 
-                  ...sortedBills.map(
-                    (doc) =>
-                        _buildBillCard(doc),
-                  ),
-                ],
-              ],
+                      ...sortedReadings.map(
+                        (item) =>
+                            _buildPendingCard(
+                          item,
+                        ),
+                      ),
+                    ],
+
+                    // ==================================================
+                    // BILLS
+                    // ==================================================
+
+                    if (sortedBills
+                        .isNotEmpty) ...[
+                      const Padding(
+                        padding:
+                            EdgeInsets.only(
+                          left: 2,
+                          top: 8,
+                          bottom: 8,
+                        ),
+                        child:
+                            Text(
+                          'BILL MONITORING',
+                          style:
+                              TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            fontSize:
+                                14,
+                            color:
+                                Colors.orange,
+                          ),
+                        ),
+                      ),
+
+                      ...sortedBills.map(
+                        (doc) =>
+                            _buildBillCard(
+                          doc,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             );
           },
         );
@@ -2504,26 +3154,46 @@ class _VerifyMeterReadingsScreenState
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Verify Meter Readings',
         ),
         backgroundColor:
-            Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
+            Theme.of(context)
+                .primaryColor,
+        foregroundColor:
+            Colors.white,
       ),
-
       body: Column(
         children: [
           _buildFilterBar(),
-
           Expanded(
-            child: _buildFirestoreDataView(),
+            child:
+                _buildFirestoreDataView(),
           ),
         ],
       ),
     );
   }
+}
+
+// ================================================================
+// READING ITEM
+//
+// Holds the original Firestore document AND the temporary data
+// containing the consumer's CURRENT profile location.
+// ================================================================
+
+class _ReadingItem {
+  final QueryDocumentSnapshot document;
+  final Map<String, dynamic> data;
+
+  const _ReadingItem({
+    required this.document,
+    required this.data,
+  });
 }

@@ -350,7 +350,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen> {
                                     child: Text(
                                       "₱${totalAmount.toStringAsFixed(2)}",
                                       style: const TextStyle(
-                                        color: Color(0xFFD32F2F),
+                                        color: Color.fromARGB(255, 16, 15, 15),
                                         fontWeight: FontWeight.bold,
                                         fontSize: 22,
                                       ),

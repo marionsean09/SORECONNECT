@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/services/complaint_services.dart';
 
 class ManageComplaintsScreen extends StatefulWidget {
   const ManageComplaintsScreen({super.key});
@@ -15,10 +15,9 @@ class ManageComplaintsScreen extends StatefulWidget {
 
 class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ComplaintService _complaintService =
+      ComplaintService();
 
-  // ============================================================
-  // COLORS / THEME
-  // ============================================================
 
   static const Color primaryOrange = Color(0xFFFFA000);
   static const Color backgroundColor = Color(0xFFFFF8E7);
@@ -993,7 +992,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
         vertical: 8,
       ),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.08),
+        color: statusColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: Colors.black87,
@@ -1111,7 +1110,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
 
                       DropdownButtonFormField<
                           String>(
-                        value:
+                        initialValue:
                             selectedStatus,
                         decoration:
                             InputDecoration(
@@ -1241,29 +1240,20 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
                             );
 
                             try {
-                              final user =
-                                  FirebaseAuth
-                                      .instance
-                                      .currentUser;
+                              // ==================================================
+                              // UPDATED:
+                              // USE COMPLAINT SERVICE
+                              // ==================================================
 
-                              await _firestore
-                                  .collection(
-                                      'complaints')
-                                  .doc(
-                                      complaintId)
-                                  .update({
-                                'response':
-                                    response,
-                                'status':
+                              await _complaintService
+                                  .updateComplaintStatus(
+                                complaintId:
+                                    complaintId,
+                                status:
                                     selectedStatus,
-                                'respondedAt':
-                                    FieldValue
-                                        .serverTimestamp(),
-                                'respondedBy':
-                                    user?.email ??
-                                        user?.uid ??
-                                        'Teller',
-                              });
+                                response:
+                                    response,
+                              );
 
                               if (!dialogContext
                                   .mounted) {
@@ -1492,7 +1482,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
         boxShadow: [
           BoxShadow(
             color: Colors.black
-                .withOpacity(0.07),
+                .withValues(alpha: 0.07),
             blurRadius: 8,
             offset:
                 const Offset(0, 3),
@@ -2306,11 +2296,14 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
           Expanded(
             child:
                 StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection(
-                    'complaints',
-                  )
-                  .snapshots(),
+              // ==================================================
+              // UPDATED:
+              // USE COMPLAINT SERVICE
+              // ==================================================
+
+              stream:
+                  _complaintService
+                      .getAllComplaints(),
 
               builder: (
                 context,

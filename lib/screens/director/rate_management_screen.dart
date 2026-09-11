@@ -130,7 +130,7 @@ class _RateManagementScreenState extends State<RateManagementScreen> {
               // CURRENT RATE CARD
               // ======================================================
               Card(
-                color: primaryColor.withOpacity(0.1),
+                color: primaryColor.withValues(alpha: 0.1),
                 elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

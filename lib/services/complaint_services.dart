@@ -8,7 +8,10 @@ class ComplaintService {
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
 
+  // ============================================================
   // SUBMIT COMPLAINT
+  // ============================================================
+
   Future<void> submitComplaint({
     required String subject,
     required String complaintType,
@@ -21,7 +24,10 @@ class ComplaintService {
         throw Exception("User not logged in.");
       }
 
-      // Get current consumer information
+      // ==========================================================
+      // GET CURRENT CONSUMER INFORMATION
+      // ==========================================================
+
       final userDoc = await _firestore
           .collection('users')
           .doc(user.uid)
@@ -33,7 +39,41 @@ class ComplaintService {
         );
       }
 
-      final userData = userDoc.data()!;
+      final userData =
+          userDoc.data() ??
+              <String, dynamic>{};
+
+      // ==========================================================
+      // GET CONSUMER LOCATION
+      // ==========================================================
+
+      final barangay =
+          userData['barangay'] ??
+          userData['baranggay'] ??
+          userData['barangayName'] ??
+          userData['brgy'] ??
+          '';
+
+      final municipality =
+          userData['municipality'] ??
+          userData['municipalityName'] ??
+          userData['city'] ??
+          userData['cityName'] ??
+          '';
+
+      final province =
+          userData['province'] ??
+          'Sorsogon';
+
+      final address =
+          userData['address'] ??
+          userData['fullAddress'] ??
+          userData['completeAddress'] ??
+          '';
+
+      // ==========================================================
+      // CREATE COMPLAINT DOCUMENT
+      // ==========================================================
 
       final complaintRef =
           _firestore
@@ -41,34 +81,87 @@ class ComplaintService {
               .doc();
 
       await complaintRef.set({
-        'complaintId': complaintRef.id,
+        // ========================================================
+        // COMPLAINT IDENTIFICATION
+        // ========================================================
 
-        'consumerId': user.uid,
+        'complaintId':
+            complaintRef.id,
+
+        // ========================================================
+        // CONSUMER INFORMATION
+        // ========================================================
+
+        'consumerId':
+            user.uid,
 
         'consumerName':
-            userData['full_name'] ?? '',
+            userData['full_name'] ??
+                userData['fullName'] ??
+                '',
 
         'accountNumber':
-            userData['accountNumber'] ?? '',
+            userData['accountNumber'] ??
+                userData['account_number'] ??
+                '',
 
-        'subject': subject,
+        // ========================================================
+        // CONSUMER LOCATION
+        // ========================================================
 
-        'complaintType': complaintType,
+        'barangay':
+            barangay,
 
-        'description': description,
+        'municipality':
+            municipality,
 
+        'province':
+            province,
+
+        'address':
+            address,
+
+        // ========================================================
+        // COMPLAINT INFORMATION
+        // ========================================================
+
+        'subject':
+            subject,
+
+        'complaintType':
+            complaintType,
+
+        'description':
+            description,
+
+        // ========================================================
         // DEFAULT STATUS
-        'status': 'Pending',
+        // ========================================================
 
+        'status':
+            'Pending',
+
+        // ========================================================
         // TELLER RESPONSE
-        'response': '',
+        // ========================================================
 
+        'response':
+            '',
+
+        // ========================================================
         // TELLER INFORMATION
-        'respondedBy': '',
+        // ========================================================
 
-        'respondedAt': null,
+        'respondedBy':
+            '',
 
+        'respondedAt':
+            null,
+
+        // ========================================================
         // COMPLAINT DATE
+        // ========================================================
+
         'createdAt':
             FieldValue.serverTimestamp(),
 
@@ -82,7 +175,10 @@ class ComplaintService {
     }
   }
 
+  // ============================================================
   // GET ALL COMPLAINTS
+  // ============================================================
+
   Stream<QuerySnapshot> getAllComplaints() {
     return _firestore
         .collection('complaints')
@@ -93,7 +189,10 @@ class ComplaintService {
         .snapshots();
   }
 
+  // ============================================================
   // GET COMPLAINTS OF CURRENT CONSUMER
+  // ============================================================
+
   Stream<QuerySnapshot> getConsumerComplaints(
     String consumerId,
   ) {
@@ -110,33 +209,49 @@ class ComplaintService {
         .snapshots();
   }
 
+  // ============================================================
   // UPDATE COMPLAINT STATUS AND RESPONSE
+  // ============================================================
+
   Future<void> updateComplaintStatus({
     required String complaintId,
     required String status,
     required String response,
   }) async {
     try {
-      final user = _auth.currentUser;
+      final user =
+          _auth.currentUser;
 
       await _firestore
           .collection('complaints')
           .doc(complaintId)
           .update({
-        // STATUS:
-        // Pending
-        // In Progress
-        // Resolved
-        'status': status,
+        // ========================================================
+        // STATUS
+        // ========================================================
 
+        'status':
+            status,
+
+        // ========================================================
         // TELLER RESPONSE
-        'response': response,
+        // ========================================================
 
+        'response':
+            response,
+
+        // ========================================================
         // WHO RESPONDED
-        'respondedBy':
-            user?.email ?? 'Teller',
+        // ========================================================
 
+        'respondedBy':
+            user?.email ??
+                'Teller',
+
+        // ========================================================
         // RESPONSE DATE
+        // ========================================================
+
         'respondedAt':
             FieldValue.serverTimestamp(),
       });

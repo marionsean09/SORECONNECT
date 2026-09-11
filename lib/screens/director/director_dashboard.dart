@@ -158,7 +158,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -252,7 +252,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
+                      color: Colors.black.withValues(alpha: 0.06),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -264,7 +264,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _accentGold.withOpacity(0.15),
+                        color: _accentGold.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
@@ -330,7 +330,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   // VIEW
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _reportType,
+                      initialValue: _reportType,
                       decoration: const InputDecoration(
                         labelText: 'View',
                         border: OutlineInputBorder(),
@@ -361,7 +361,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   if (_reportType == 'Monthly')
                     Expanded(
                       child: DropdownButtonFormField<int>(
-                        value: _selectedMonth,
+                        initialValue: _selectedMonth,
                         decoration: const InputDecoration(
                           labelText: 'Month',
                           border: OutlineInputBorder(),
@@ -394,7 +394,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   // YEAR
                   Expanded(
                     child: DropdownButtonFormField<int>(
-                      value: _selectedYear,
+                      initialValue: _selectedYear,
                       decoration: const InputDecoration(
                         labelText: 'Year',
                         border: OutlineInputBorder(),

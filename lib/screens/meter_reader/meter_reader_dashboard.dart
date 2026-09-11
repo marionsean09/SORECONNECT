@@ -428,7 +428,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -489,7 +489,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.025),
+            color: Colors.black.withValues(alpha: 0.025),
             blurRadius: 5,
             offset: const Offset(0, 2),
           ),
@@ -749,9 +749,9 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                   decoration: BoxDecoration(
                     color: isVerified
                         ? Colors.green
-                            .withOpacity(0.12)
+                            .withValues(alpha: 0.12)
                         : Colors.orange
-                            .withOpacity(0.12),
+                            .withValues(alpha: 0.12),
                     borderRadius:
                         BorderRadius.circular(20),
                   ),
@@ -812,7 +812,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                     BorderRadius.circular(10),
                 border: Border.all(
                   color: Colors.green
-                      .withOpacity(0.12),
+                      .withValues(alpha: 0.12),
                 ),
               ),
               child: Column(
@@ -1176,8 +1176,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black
-                              .withOpacity(
-                            0.06,
+                              .withValues(
+                            alpha: 0.06,
                           ),
                           blurRadius: 12,
                           offset:

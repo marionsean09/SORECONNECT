@@ -601,7 +601,7 @@ class _MonitorComplaintsScreenState
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        value: selectedStatus,
+                        initialValue: selectedStatus,
                         decoration: const InputDecoration(
                           labelText: 'Complaint Status',
                           border: OutlineInputBorder(),
@@ -1281,8 +1281,8 @@ class _MonitorComplaintsScreenState
                                     Chip(
                                       label: Text(status),
                                       backgroundColor:
-                                          statusColor.withOpacity(
-                                        .15,
+                                          statusColor.withValues(
+                                        alpha: .15,
                                       ),
                                       labelStyle: TextStyle(
                                         color: statusColor,
@@ -1316,12 +1316,12 @@ class _MonitorComplaintsScreenState
                                       const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: Colors.green
-                                        .withOpacity(0.06),
+                                        .withValues(alpha: 0.06),
                                     borderRadius:
                                         BorderRadius.circular(10),
                                     border: Border.all(
                                       color: _primaryGreen
-                                          .withOpacity(0.25),
+                                          .withValues(alpha: 0.25),
                                     ),
                                   ),
                                   child: Column(
@@ -1449,7 +1449,7 @@ class _MonitorComplaintsScreenState
                                         const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
                                       color: Colors.green
-                                          .withOpacity(0.08),
+                                          .withValues(alpha: 0.08),
                                       borderRadius:
                                           BorderRadius.circular(10),
                                     ),

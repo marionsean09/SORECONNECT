@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/services/announcement_service.dart';
 
 class PostAnnouncementScreen extends StatefulWidget {
   const PostAnnouncementScreen({super.key});
@@ -16,6 +17,9 @@ class PostAnnouncementScreen extends StatefulWidget {
 class _PostAnnouncementScreenState
     extends State<PostAnnouncementScreen> {
   final _formKey = GlobalKey<FormState>();
+
+  final AnnouncementService _announcementService =
+      AnnouncementService();
 
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
@@ -435,7 +439,7 @@ class _PostAnnouncementScreenState
         const SizedBox(height: 12),
 
         DropdownButtonFormField<String>(
-          value: _coverageType,
+          initialValue: _coverageType,
           decoration: InputDecoration(
             labelText: 'Coverage',
             border: OutlineInputBorder(
@@ -472,7 +476,7 @@ class _PostAnnouncementScreenState
           const SizedBox(height: 16),
 
           DropdownButtonFormField<String>(
-            value: _selectedMunicipality,
+            initialValue: _selectedMunicipality,
             decoration: InputDecoration(
               labelText: 'Municipality',
               border: OutlineInputBorder(
@@ -505,7 +509,7 @@ class _PostAnnouncementScreenState
           const SizedBox(height: 16),
 
           DropdownButtonFormField<String>(
-            value: _selectedBarangay,
+            initialValue: _selectedBarangay,
             decoration: InputDecoration(
               labelText: 'Barangay',
               border: OutlineInputBorder(
@@ -581,12 +585,12 @@ class _PostAnnouncementScreenState
       decoration: BoxDecoration(
         color: Theme.of(context)
             .primaryColor
-            .withOpacity(0.07),
+            .withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: Theme.of(context)
               .primaryColor
-              .withOpacity(0.18),
+              .withValues(alpha: 0.18),
         ),
       ),
       child: Row(
@@ -637,10 +641,10 @@ class _PostAnnouncementScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.06),
+        color: Colors.orange.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.orange.withOpacity(0.25),
+          color: Colors.orange.withValues(alpha: 0.25),
         ),
       ),
       child: Column(
@@ -719,10 +723,10 @@ class _PostAnnouncementScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.06),
+        color: Colors.red.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.red.withOpacity(0.25),
+          color: Colors.red.withValues(alpha: 0.25),
         ),
       ),
       child: Column(
@@ -783,10 +787,10 @@ class _PostAnnouncementScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.06),
+        color: Colors.blue.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.blue.withOpacity(0.25),
+          color: Colors.blue.withValues(alpha: 0.25),
         ),
       ),
       child: Column(
@@ -1044,12 +1048,47 @@ class _PostAnnouncementScreenState
       };
 
       // ========================================================
-      // SAVE
+      // SAVE THROUGH ANNOUNCEMENT SERVICE
       // ========================================================
 
-      await FirebaseFirestore.instance
-          .collection('announcements')
-          .add(announcementData);
+      await _announcementService.postAnnouncement(
+        title: announcementData['title'] as String,
+        content: announcementData['content'] as String,
+        type: announcementData['type'] as String,
+        typeLabel:
+            announcementData['typeLabel'] as String,
+        postedBy:
+            announcementData['postedBy'] as String?,
+        coverageType:
+            announcementData['coverageType'] as String,
+        municipality:
+            announcementData['municipality'] as String?,
+        barangay:
+            announcementData['barangay'] as String?,
+        province:
+            announcementData['province'] as String,
+        district:
+            announcementData['district'] as String,
+        coveredArea:
+            announcementData['coveredArea'] as String?,
+        scheduledDate:
+            scheduledDateTime,
+        scheduledEndDate:
+            scheduledEndDateTime,
+        startTime:
+            announcementData['startTime'] as String?,
+        endTime:
+            announcementData['endTime'] as String?,
+        disconnectionDate:
+            disconnectionDateTime,
+        disconnectionTime:
+            announcementData['disconnectionTime']
+                as String?,
+        readingDate:
+            readingDate,
+        status:
+            announcementData['status'] as String,
+      );
 
       // ========================================================
       // RESET FORM
@@ -1177,7 +1216,7 @@ class _PostAnnouncementScreenState
               // ==================================================
 
               DropdownButtonFormField<String>(
-                value: _selectedType,
+                initialValue: _selectedType,
 
                 decoration: InputDecoration(
                   labelText:

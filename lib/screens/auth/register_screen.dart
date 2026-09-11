@@ -430,7 +430,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // ========================================================
 
         DropdownButtonFormField<String>(
-          value: sorsogonProvince,
+          initialValue: sorsogonProvince,
           decoration: _inputDecoration(
             label: 'Province',
             icon: Icons.location_on,
@@ -453,7 +453,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // ========================================================
 
         DropdownButtonFormField<String>(
-          value: sorsogonSecondDistrict,
+          initialValue: sorsogonSecondDistrict,
           decoration: _inputDecoration(
             label: 'District',
             icon: Icons.map,
@@ -476,7 +476,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // ========================================================
 
         DropdownButtonFormField<String>(
-          value: _selectedMunicipality,
+          initialValue: _selectedMunicipality,
           isExpanded: true,
           decoration: _inputDecoration(
             label: 'Municipality',
@@ -522,7 +522,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // ========================================================
 
         DropdownButtonFormField<String>(
-          value: _selectedBarangay,
+          initialValue: _selectedBarangay,
           isExpanded: true,
           decoration: _inputDecoration(
             label: 'Barangay',
@@ -575,13 +575,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             decoration: BoxDecoration(
               color: const Color(
                 0xFFD50000,
-              ).withOpacity(0.06),
+              ).withValues(alpha: 0.06),
               borderRadius:
                   BorderRadius.circular(12),
               border: Border.all(
                 color: const Color(
                   0xFFD50000,
-                ).withOpacity(0.15),
+                ).withValues(alpha: 0.15),
               ),
             ),
             child: Row(
@@ -678,8 +678,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration:
                     BoxDecoration(
                   color:
-                      Colors.white.withOpacity(
-                    0.95,
+                      Colors.white.withValues(
+                    alpha: 0.95,
                   ),
                   borderRadius:
                       BorderRadius.circular(25),
@@ -979,8 +979,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         decoration:
                             BoxDecoration(
                           color: Colors.red
-                              .withOpacity(
-                            0.08,
+                              .withValues(
+                            alpha: 0.08,
                           ),
                           borderRadius:
                               BorderRadius

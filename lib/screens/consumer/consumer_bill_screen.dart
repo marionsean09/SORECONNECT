@@ -297,7 +297,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen> {
                                       ),
                                       Chip(
                                         backgroundColor:
-                                            statusColor.withOpacity(.15),
+                                            statusColor.withValues(alpha: .15),
                                         label: Text(
                                           status.toUpperCase(),
                                         ),

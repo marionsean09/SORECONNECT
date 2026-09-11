@@ -576,8 +576,8 @@ class _ViewAnnouncementsScreenState
                                         BoxDecoration(
                                       color:
                                           typeColor
-                                              .withOpacity(
-                                        0.10,
+                                              .withValues(
+                                        alpha: 0.10,
                                       ),
                                       borderRadius:
                                           BorderRadius
@@ -641,8 +641,8 @@ class _ViewAnnouncementsScreenState
                                               BoxDecoration(
                                             color:
                                                 typeColor
-                                                    .withOpacity(
-                                              0.10,
+                                                    .withValues(
+                                              alpha: 0.10,
                                             ),
                                             borderRadius:
                                                 BorderRadius
@@ -1047,8 +1047,8 @@ class AnnouncementDetailsScreen
             decoration:
                 BoxDecoration(
               color:
-                  itemColor.withOpacity(
-                0.10,
+                  itemColor.withValues(
+                alpha: 0.10,
               ),
               borderRadius:
                   BorderRadius.circular(
@@ -1463,8 +1463,8 @@ class AnnouncementDetailsScreen
               decoration:
                   BoxDecoration(
                 color: typeColor
-                    .withOpacity(
-                  0.10,
+                    .withValues(
+                  alpha: 0.10,
                 ),
                 borderRadius:
                     BorderRadius.circular(
@@ -1514,8 +1514,8 @@ class AnnouncementDetailsScreen
               decoration:
                   BoxDecoration(
                 color: typeColor
-                    .withOpacity(
-                  0.10,
+                    .withValues(
+                  alpha: 0.10,
                 ),
                 borderRadius:
                     BorderRadius.circular(

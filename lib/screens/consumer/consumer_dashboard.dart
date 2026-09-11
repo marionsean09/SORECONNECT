@@ -238,13 +238,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
 
         _parseOldAddress(oldAddress);
 
-        if (municipality == null) {
-          municipality = _selectedMunicipality;
-        }
+        municipality ??= _selectedMunicipality;
 
-        if (barangay == null) {
-          barangay = _selectedBarangay;
-        }
+        barangay ??= _selectedBarangay;
       }
 
       if (mounted) {
@@ -830,7 +826,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         boxShadow: [
           BoxShadow(
             color:
-                orange.withOpacity(.25),
+                orange.withValues(alpha: .25),
             blurRadius: 15,
             offset:
                 const Offset(0, 7),
@@ -869,7 +865,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                     decoration:
                         BoxDecoration(
                       color: Colors.white
-                          .withOpacity(.18),
+                          .withValues(alpha: .18),
                       borderRadius:
                           BorderRadius.circular(
                         14,
@@ -1189,8 +1185,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             decoration:
                                 BoxDecoration(
                               color: orange
-                                  .withOpacity(
-                                .12,
+                                  .withValues(
+                                alpha: .12,
                               ),
                               borderRadius:
                                   BorderRadius
@@ -1412,7 +1408,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(.06),
+                Colors.black.withValues(alpha: .06),
             blurRadius: 12,
             offset:
                 const Offset(0, 5),
@@ -1427,7 +1423,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             decoration:
                 BoxDecoration(
               color:
-                  color.withOpacity(.10),
+                  color.withValues(alpha: .10),
               borderRadius:
                   BorderRadius.circular(
                 15,
@@ -1563,7 +1559,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color:
-            color.withOpacity(.07),
+            color.withValues(alpha: .07),
         borderRadius:
             BorderRadius.circular(12),
       ),
@@ -1971,8 +1967,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             BoxShadow(
                               color: Colors
                                   .black
-                                  .withOpacity(
-                                .05,
+                                  .withValues(
+                                alpha: .05,
                               ),
                               blurRadius:
                                   12,
@@ -1998,8 +1994,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   decoration:
                                       BoxDecoration(
                                     color:
-                                        orange.withOpacity(
-                                      .12,
+                                        orange.withValues(
+                                      alpha: .12,
                                     ),
                                     borderRadius:
                                         BorderRadius
@@ -2110,8 +2106,8 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               decoration:
                                   BoxDecoration(
                                 color:
-                                    orange.withOpacity(
-                                  .07,
+                                    orange.withValues(
+                                  alpha: .07,
                                 ),
                                 borderRadius:
                                     BorderRadius

@@ -157,7 +157,7 @@ class _MonitorReportsScreenState extends State<MonitorReportsScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedMonth,
+                    initialValue: _selectedMonth,
                     decoration: const InputDecoration(
                       labelText: 'Month',
                       border: OutlineInputBorder(),
@@ -184,7 +184,7 @@ class _MonitorReportsScreenState extends State<MonitorReportsScreen> {
 
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedYear,
+                    initialValue: _selectedYear,
                     decoration: const InputDecoration(
                       labelText: 'Year',
                       border: OutlineInputBorder(),

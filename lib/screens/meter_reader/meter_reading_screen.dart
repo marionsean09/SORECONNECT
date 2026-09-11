@@ -967,8 +967,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(
-              0.05,
+                Colors.black.withValues(
+              alpha: 0.05,
             ),
             blurRadius:
                 12,
@@ -1084,8 +1084,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(
-              0.025,
+                Colors.black.withValues(
+              alpha: 0.025,
             ),
             blurRadius:
                 6,
@@ -1215,8 +1215,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                     BoxShadow(
                       color:
                           Colors.black
-                              .withOpacity(
-                        0.025,
+                              .withValues(
+                        alpha: 0.025,
                       ),
                       blurRadius:
                           6,
@@ -1344,8 +1344,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(
-              0.05,
+                Colors.black.withValues(
+              alpha: 0.05,
             ),
             blurRadius:
                 10,
@@ -1595,8 +1595,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withOpacity(
-              0.04,
+                Colors.black.withValues(
+              alpha: 0.04,
             ),
             blurRadius:
                 10,
@@ -1770,8 +1770,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
           boxShadow: [
             BoxShadow(
               color:
-                  Colors.black.withOpacity(
-                0.05,
+                  Colors.black.withValues(
+                alpha: 0.05,
               ),
               blurRadius:
                   10,
@@ -1988,8 +1988,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
           boxShadow: [
             BoxShadow(
               color:
-                  Colors.black.withOpacity(
-                0.04,
+                  Colors.black.withValues(
+                alpha: 0.04,
               ),
               blurRadius:
                   10,
@@ -2120,8 +2120,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
           boxShadow: [
             BoxShadow(
               color:
-                  Colors.black.withOpacity(
-                0.05,
+                  Colors.black.withValues(
+                alpha: 0.05,
               ),
               blurRadius:
                   10,

@@ -167,7 +167,7 @@ class _SubmitComplaintScreenState
             const SizedBox(height: 8),
 
             DropdownButtonFormField<String>(
-              value: _complaintType,
+              initialValue: _complaintType,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
               ),
@@ -574,8 +574,8 @@ class _SubmitComplaintScreenState
                                           BoxDecoration(
                                         color:
                                             statusColor
-                                                .withOpacity(
-                                          0.15,
+                                                .withValues(
+                                          alpha: 0.15,
                                         ),
 
                                         borderRadius:

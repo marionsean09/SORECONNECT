@@ -561,7 +561,7 @@ class _GenerateReportScreenState
       child: Material(
         color:
             selected
-                ? Colors.orange.withOpacity(0.08)
+                ? Colors.orange.withValues(alpha: 0.08)
                 : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
@@ -948,7 +948,7 @@ class _GenerateReportScreenState
             CircleAvatar(
               radius: 28,
               backgroundColor:
-                  color.withOpacity(0.15),
+                  color.withValues(alpha: 0.15),
               child: Icon(
                 icon,
                 color: color,

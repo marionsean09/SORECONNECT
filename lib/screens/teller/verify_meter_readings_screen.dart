@@ -1270,7 +1270,7 @@ class _VerifyMeterReadingsScreenState
 
                     DropdownButtonFormField<
                         String>(
-                      value:
+                      initialValue:
                           selectedStatus,
                       decoration:
                           const InputDecoration(
@@ -2336,8 +2336,8 @@ class _VerifyMeterReadingsScreenState
                   decoration:
                       BoxDecoration(
                     color: statusColor
-                        .withOpacity(
-                      0.12,
+                        .withValues(
+                      alpha: 0.12,
                     ),
                     borderRadius:
                         BorderRadius
@@ -2596,8 +2596,8 @@ class _VerifyMeterReadingsScreenState
                       BoxDecoration(
                     color: Colors
                         .blue
-                        .withOpacity(
-                      0.12,
+                        .withValues(
+                      alpha: 0.12,
                     ),
                     borderRadius:
                         BorderRadius

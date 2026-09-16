@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 
@@ -8,6 +9,7 @@ import 'package:soreconnect/screens/consumer/consumer_bill_screen.dart';
 import 'package:soreconnect/screens/complaints/submit_complaint_screen.dart';
 import 'package:soreconnect/screens/announcements/view_announcements_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
+import 'package:soreconnect/screens/auth/verify_email_screen.dart';
 
 class ConsumerDashboard extends StatefulWidget {
   const ConsumerDashboard({super.key});
@@ -54,6 +56,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
   bool _editingProfile = false;
   bool _savingProfile = false;
   bool _profileLoaded = false;
+  bool _saveButtonPressed = false;
 
   // ============================================================
   // LOGOUT
@@ -115,6 +118,31 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             .toLowerCase()
             .trim() ==
         'paid';
+  }
+
+  bool _isCancelled(Map<String, dynamic> data) {
+    final status = data['status']
+        ?.toString()
+        .toLowerCase()
+        .trim();
+
+    return status == 'cancelled' || status == 'canceled';
+  }
+
+  DateTime? _getDueDate(Map<String, dynamic> data) {
+    final value = data['dueDate'];
+
+    if (value is Timestamp) return value.toDate();
+
+    return null;
+  }
+
+  DateTime? _getPaymentStartDate(Map<String, dynamic> data) {
+    final value = data['paymentStartDate'];
+
+    if (value is Timestamp) return value.toDate();
+
+    return null;
   }
 
   void _showMessage(
@@ -182,10 +210,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       _fullNameController.text =
           data['full_name']?.toString() ?? '';
 
+      // Firebase Auth's email is the source of truth for the
+      // actual sign-in email — Firestore's copy is only a cache
+      // and can briefly lag behind right after an email change.
       _emailController.text =
-          data['email']?.toString().trim().isNotEmpty == true
-              ? data['email'].toString()
-              : user.email ?? '';
+          user.email?.trim().isNotEmpty == true
+              ? user.email!
+              : (data['email']?.toString() ?? '');
 
       _accountNumberController.text =
           data['accountNumber']?.toString() ?? '';
@@ -397,7 +428,9 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       return;
     }
 
-    if (_emailController.text.trim().isEmpty) {
+    final newEmail = _emailController.text.trim();
+
+    if (newEmail.isEmpty) {
       _showMessage(
         'Email is required.',
         Colors.red,
@@ -405,9 +438,71 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       return;
     }
 
+    if (!newEmail.contains('@')) {
+      _showMessage(
+        'Enter a valid email address.',
+        Colors.red,
+      );
+      return;
+    }
+
+    final currentAuthEmail = user.email ?? '';
+
+    final emailChanged =
+        newEmail.toLowerCase() !=
+            currentAuthEmail.toLowerCase();
+
     setState(() {
       _savingProfile = true;
     });
+
+    // ==========================================================
+    // UPDATE SIGN-IN EMAIL (IF CHANGED)
+    //
+    // Firebase sends a confirmation link to the NEW address —
+    // the sign-in email only actually changes once the user taps
+    // it, so Firestore keeps the CURRENT (still-valid) email
+    // until then.
+    // ==========================================================
+
+    if (emailChanged) {
+      try {
+        await user.verifyBeforeUpdateEmail(newEmail);
+      } on FirebaseAuthException catch (e) {
+        if (!mounted) return;
+
+        setState(() {
+          _savingProfile = false;
+        });
+
+        String message;
+
+        switch (e.code) {
+          case 'requires-recent-login':
+            message =
+                'Please log out and log back in before '
+                'changing your email.';
+            break;
+          case 'email-already-in-use':
+            message =
+                'That email is already used by another account.';
+            break;
+          case 'invalid-email':
+            message = 'Enter a valid email address.';
+            break;
+          default:
+            message =
+                e.message ?? 'Unable to update email.';
+        }
+
+        _showMessage(message, Colors.red);
+        return;
+      }
+
+      // Keep the field showing the still-current email until the
+      // consumer confirms the change via the link.
+      _emailController.text = currentAuthEmail;
+    }
 
     try {
       await _firestore
@@ -418,8 +513,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           'full_name':
               _fullNameController.text.trim(),
 
-          'email':
-              _emailController.text.trim(),
+          'email': currentAuthEmail,
 
           'accountNumber':
               _accountNumberController.text.trim(),
@@ -464,10 +558,31 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         _savingProfile = false;
       });
 
-      _showMessage(
-        'Profile updated successfully.',
-        Colors.green,
-      );
+      if (emailChanged) {
+        _showMessage(
+          'Profile updated. Confirm your new email to finish '
+          'the change.',
+          Colors.green,
+        );
+
+        // Once the consumer confirms the new email on that screen,
+        // it syncs Firestore itself, signs out, and sends them to
+        // Login — this only returns here if they back out without
+        // confirming.
+        await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) =>
+                VerifyEmailScreen(pendingEmail: newEmail),
+          ),
+        );
+
+        await _loadProfile();
+      } else {
+        _showMessage(
+          'Profile updated successfully.',
+          Colors.green,
+        );
+      }
     } catch (e) {
       debugPrint(
         'Error saving profile: $e',
@@ -527,13 +642,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           ),
           border: OutlineInputBorder(
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(16),
             borderSide: BorderSide.none,
           ),
           enabledBorder:
               OutlineInputBorder(
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(16),
             borderSide: BorderSide(
               color: Colors.grey.shade200,
             ),
@@ -541,7 +656,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           disabledBorder:
               OutlineInputBorder(
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(16),
             borderSide: BorderSide(
               color: Colors.grey.shade200,
             ),
@@ -549,7 +664,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           focusedBorder:
               OutlineInputBorder(
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(16),
             borderSide:
                 const BorderSide(
               color: orange,
@@ -586,7 +701,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             ? Colors.white
             : const Color(0xFFF5F7F5),
         borderRadius:
-            BorderRadius.circular(12),
+            BorderRadius.circular(16),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -609,9 +724,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               const SizedBox(width: 12),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.black54,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
                   fontSize: 14,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
@@ -739,7 +855,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
           decoration: BoxDecoration(
             color: const Color(0xFFF5F7F5),
             borderRadius:
-                BorderRadius.circular(12),
+                BorderRadius.circular(16),
             border: Border.all(
               color: Colors.grey.shade200,
             ),
@@ -759,11 +875,12 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Complete Address',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -777,7 +894,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             FontWeight.w500,
                         color: address.isNotEmpty
                             ? Colors.black87
-                            : Colors.black38,
+                            : Colors.grey.shade400,
                       ),
                     ),
                   ],
@@ -804,7 +921,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius:
-              BorderRadius.circular(20),
+              BorderRadius.circular(24),
         ),
         child: const Center(
           child: CircularProgressIndicator(
@@ -817,12 +934,20 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
     return AnimatedContainer(
       duration:
           const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
       width: double.infinity,
       decoration: BoxDecoration(
         color: orange,
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(24),
         boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: .12,
+            ),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
           BoxShadow(
             color:
                 orange.withValues(alpha: .25),
@@ -840,7 +965,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
 
           InkWell(
             borderRadius:
-                BorderRadius.circular(20),
+                BorderRadius.circular(24),
             onTap: () {
               setState(() {
                 _profileExpanded =
@@ -867,7 +992,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           .withValues(alpha: .18),
                       borderRadius:
                           BorderRadius.circular(
-                        14,
+                        16,
                       ),
                     ),
                     child: const Icon(
@@ -972,7 +1097,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                   color: Colors.white,
                   borderRadius:
                       BorderRadius.circular(
-                    17,
+                    20,
                   ),
                 ),
                 child: Column(
@@ -989,7 +1114,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         const Icon(
                           Icons
                               .account_circle_outlined,
-                          color: Colors.black,
+                          color: Colors.black87,
                           size: 22,
                         ),
                         const SizedBox(
@@ -1013,6 +1138,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           IconButton(
                             tooltip:
                                 'Edit Profile',
+                            splashRadius: 20,
                             onPressed: () {
                               setState(
                                 () =>
@@ -1025,7 +1151,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               Icons
                                   .edit_outlined,
                               color:
-                                  Colors.black,
+                                  Colors.black87,
                             ),
                           ),
                       ],
@@ -1045,7 +1171,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           Icons.email_outlined,
                       controller:
                           _emailController,
-                      enabled: false,
+                      enabled:
+                          _editingProfile,
+                      keyboardType:
+                          TextInputType.emailAddress,
                     ),
 
                     // ==================================================
@@ -1100,14 +1229,14 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                       height: 2,
                     ),
 
-                    const Text(
+                    Text(
                       'Address',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight:
                             FontWeight.w600,
                         color:
-                            Colors.black54,
+                            Colors.grey.shade600,
                       ),
                     ),
 
@@ -1143,7 +1272,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         borderRadius:
                             BorderRadius
                                 .circular(
-                          12,
+                          16,
                         ),
                         border: Border.all(
                           color: Colors
@@ -1164,13 +1293,17 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           const SizedBox(
                             width: 12,
                           ),
-                          const Text(
+                          Text(
                             'Account Type',
                             style:
                                 TextStyle(
                               fontSize: 12,
+                              fontWeight:
+                                  FontWeight
+                                      .w500,
                               color: Colors
-                                  .black54,
+                                  .grey
+                                  .shade600,
                             ),
                           ),
                           const Spacer(),
@@ -1190,7 +1323,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               borderRadius:
                                   BorderRadius
                                       .circular(
-                                20,
+                                16,
                               ),
                             ),
                             child:
@@ -1254,7 +1387,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   borderRadius:
                                       BorderRadius
                                           .circular(
-                                    12,
+                                    16,
                                   ),
                                 ),
                               ),
@@ -1268,8 +1401,41 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                             width: 10,
                           ),
                           Expanded(
-                            child:
-                                ElevatedButton(
+                            child: Listener(
+                              onPointerDown: (_) {
+                                if (!_savingProfile) {
+                                  setState(
+                                    () =>
+                                        _saveButtonPressed =
+                                            true,
+                                  );
+                                }
+                              },
+                              onPointerUp: (_) =>
+                                  setState(
+                                () =>
+                                    _saveButtonPressed =
+                                        false,
+                              ),
+                              onPointerCancel: (_) =>
+                                  setState(
+                                () =>
+                                    _saveButtonPressed =
+                                        false,
+                              ),
+                              child: AnimatedScale(
+                                scale:
+                                    _saveButtonPressed
+                                        ? 0.97
+                                        : 1.0,
+                                duration:
+                                    const Duration(
+                                  milliseconds: 120,
+                                ),
+                                curve:
+                                    Curves.easeOut,
+                                child:
+                                    ElevatedButton(
                               onPressed:
                                   _savingProfile
                                       ? null
@@ -1281,6 +1447,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                     orange,
                                 foregroundColor:
                                     Colors.white,
+                                elevation: 0,
+                                shadowColor:
+                                    Colors
+                                        .transparent,
                                 padding:
                                     const EdgeInsets
                                         .symmetric(
@@ -1291,7 +1461,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   borderRadius:
                                       BorderRadius
                                           .circular(
-                                    12,
+                                    16,
                                   ),
                                 ),
                               ),
@@ -1317,8 +1487,12 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                             fontWeight:
                                                 FontWeight
                                                     .bold,
+                                            letterSpacing:
+                                                0.3,
                                           ),
                                         ),
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -1341,10 +1515,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                               TextOverflow
                                   .ellipsis,
                           style:
-                              const TextStyle(
+                              TextStyle(
                             fontSize: 10,
                             color:
-                                Colors.black38,
+                                Colors.grey.shade400,
                           ),
                         ),
                       ),
@@ -1403,14 +1577,21 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color:
-                Colors.black.withValues(alpha: .06),
-            blurRadius: 12,
+                Colors.black.withValues(alpha: .05),
+            blurRadius: 16,
             offset:
-                const Offset(0, 5),
+                const Offset(0, 6),
+          ),
+          BoxShadow(
+            color:
+                color.withValues(alpha: .10),
+            blurRadius: 24,
+            offset:
+                const Offset(0, 10),
           ),
         ],
       ),
@@ -1425,7 +1606,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                   color.withValues(alpha: .10),
               borderRadius:
                   BorderRadius.circular(
-                15,
+                16,
               ),
             ),
             child: Icon(
@@ -1445,12 +1626,12 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                 Text(
                   title,
                   style:
-                      const TextStyle(
+                      TextStyle(
                     fontSize: 13,
                     fontWeight:
                         FontWeight.w600,
                     color:
-                        Colors.black54,
+                        Colors.grey.shade600,
                   ),
                 ),
                 const SizedBox(
@@ -1471,10 +1652,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                 Text(
                   subtitle,
                   style:
-                      const TextStyle(
+                      TextStyle(
                     fontSize: 11,
                     color:
-                        Colors.black45,
+                        Colors.grey.shade500,
                   ),
                 ),
               ],
@@ -1500,7 +1681,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(14),
+            BorderRadius.circular(16),
         border: Border.all(
           color: Colors.grey.shade200,
         ),
@@ -1560,7 +1741,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
         color:
             color.withValues(alpha: .07),
         borderRadius:
-            BorderRadius.circular(12),
+            BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment:
@@ -1736,11 +1917,19 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
 
             double monthlyPaid = 0;
             double monthlyUnpaid = 0;
+            DateTime? monthlyDueDate;
+            DateTime? monthlyPaymentStart;
 
             final selectedPeriod =
                 '${_monthName(selectedMonth)} $selectedYear';
 
             for (final bill in bills) {
+              // Cancelled bills are excluded from every total —
+              // they are void and nothing is owed on them.
+              if (_isCancelled(bill)) {
+                continue;
+              }
+
               final amount =
                   _getAmount(bill);
 
@@ -1767,6 +1956,19 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                 } else {
                   monthlyUnpaid +=
                       amount;
+
+                  final dueDate =
+                      _getDueDate(bill);
+
+                  if (dueDate != null &&
+                      (monthlyDueDate == null ||
+                          dueDate.isBefore(
+                            monthlyDueDate,
+                          ))) {
+                    monthlyDueDate = dueDate;
+                    monthlyPaymentStart =
+                        _getPaymentStartDate(bill);
+                  }
                 }
               }
             }
@@ -1837,13 +2039,15 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         height: 5,
                       ),
 
-                      const Text(
+                      Text(
                         'Overview of your electricity account',
                         style:
                             TextStyle(
                           fontSize: 12,
+                          fontWeight:
+                              FontWeight.w500,
                           color:
-                              Colors.black54,
+                              Colors.grey.shade600,
                         ),
                       ),
 
@@ -1923,13 +2127,15 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         height: 5,
                       ),
 
-                      const Text(
+                      Text(
                         'View your billing summary for a selected month',
                         style:
                             TextStyle(
                           fontSize: 12,
+                          fontWeight:
+                              FontWeight.w500,
                           color:
-                              Colors.black54,
+                              Colors.grey.shade600,
                         ),
                       ),
 
@@ -1960,7 +2166,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                           borderRadius:
                               BorderRadius
                                   .circular(
-                            18,
+                            24,
                           ),
                           boxShadow: [
                             BoxShadow(
@@ -1970,11 +2176,24 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 alpha: .05,
                               ),
                               blurRadius:
-                                  12,
+                                  16,
                               offset:
                                   const Offset(
                                 0,
-                                5,
+                                6,
+                              ),
+                            ),
+                            BoxShadow(
+                              color: orange
+                                  .withValues(
+                                alpha: .08,
+                              ),
+                              blurRadius:
+                                  24,
+                              offset:
+                                  const Offset(
+                                0,
+                                10,
                               ),
                             ),
                           ],
@@ -1999,13 +2218,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                     borderRadius:
                                         BorderRadius
                                             .circular(
-                                      12,
+                                      16,
                                     ),
                                   ),
                                   child:
                                       const Icon(
                                     Icons
-                                        .calendar_month,
+                                        .calendar_month_outlined,
                                     color:
                                         orange,
                                     size:
@@ -2022,14 +2241,14 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                         CrossAxisAlignment
                                             .start,
                                     children: [
-                                      const Text(
+                                      Text(
                                         'Billing Period',
                                         style:
                                             TextStyle(
                                           fontSize:
                                               11,
                                           color:
-                                              Colors.black54,
+                                              Colors.grey.shade600,
                                           fontWeight:
                                               FontWeight.w500,
                                         ),
@@ -2111,7 +2330,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 borderRadius:
                                     BorderRadius
                                         .circular(
-                                  12,
+                                  16,
                                 ),
                               ),
                               child: Row(
@@ -2127,7 +2346,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                   const SizedBox(
                                     width: 10,
                                   ),
-                                  const Expanded(
+                                  Expanded(
                                     child:
                                         Text(
                                       'Monthly Total',
@@ -2138,7 +2357,7 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                         fontWeight:
                                             FontWeight.w600,
                                         color:
-                                            Colors.black54,
+                                            Colors.grey.shade600,
                                       ),
                                     ),
                                   ),
@@ -2157,6 +2376,122 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                 ],
                               ),
                             ),
+
+                            if (monthlyUnpaid >
+                                0) ...[
+                              const SizedBox(
+                                height: 14,
+                              ),
+
+                              Container(
+                                width:
+                                    double.infinity,
+                                padding:
+                                    const EdgeInsets
+                                        .all(
+                                  14,
+                                ),
+                                decoration:
+                                    BoxDecoration(
+                                  color: Colors
+                                      .red
+                                      .withValues(
+                                    alpha: .07,
+                                  ),
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    16,
+                                  ),
+                                ),
+                                child:
+                                    Row(
+                                  children: [
+                                    const Icon(
+                                      Icons
+                                          .payments_outlined,
+                                      color:
+                                          Colors.red,
+                                      size:
+                                          22,
+                                    ),
+                                    const SizedBox(
+                                      width: 10,
+                                    ),
+                                    Expanded(
+                                      child:
+                                          Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment
+                                                .start,
+                                        children: [
+                                          Text(
+                                            'Amount Due',
+                                            style:
+                                                TextStyle(
+                                              fontSize:
+                                                  12,
+                                              fontWeight:
+                                                  FontWeight.w600,
+                                              color:
+                                                  Colors.grey.shade600,
+                                            ),
+                                          ),
+                                          if (monthlyPaymentStart !=
+                                              null) ...[
+                                            const SizedBox(
+                                              height:
+                                                  2,
+                                            ),
+                                            Text(
+                                              'Payable from '
+                                              '${DateFormat('MMM dd, yyyy').format(monthlyPaymentStart)}',
+                                              style:
+                                                  TextStyle(
+                                                fontSize:
+                                                    11,
+                                                color:
+                                                    Colors.grey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                          if (monthlyDueDate !=
+                                              null) ...[
+                                            const SizedBox(
+                                              height:
+                                                  2,
+                                            ),
+                                            Text(
+                                              'Due '
+                                              '${DateFormat('MMM dd, yyyy').format(monthlyDueDate)}',
+                                              style:
+                                                  TextStyle(
+                                                fontSize:
+                                                    11,
+                                                color:
+                                                    Colors.grey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      '₱${monthlyUnpaid.toStringAsFixed(2)}',
+                                      style:
+                                          const TextStyle(
+                                        fontSize:
+                                            17,
+                                        fontWeight:
+                                            FontWeight.bold,
+                                        color:
+                                            Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
 
                             if (monthlyPaid ==
                                     0 &&
@@ -2186,21 +2521,21 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                     borderRadius:
                                         BorderRadius
                                             .circular(
-                                      12,
+                                      16,
                                     ),
                                   ),
                                   child:
-                                      const Row(
+                                      Row(
                                     children: [
                                       Icon(
                                         Icons
                                             .info_outline,
                                         color:
-                                            Colors.black38,
+                                            Colors.grey.shade500,
                                         size:
                                             20,
                                       ),
-                                      SizedBox(
+                                      const SizedBox(
                                         width:
                                             9,
                                       ),
@@ -2212,8 +2547,10 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                                               TextStyle(
                                             fontSize:
                                                 11,
+                                            fontWeight:
+                                                FontWeight.w500,
                                             color:
-                                                Colors.black54,
+                                                Colors.grey.shade600,
                                           ),
                                         ),
                                       ),

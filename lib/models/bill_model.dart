@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BillModel {
   final String billId;
+  final String ticketNumber;
   final String consumerId;
   final String consumerName;
   final String accountNumber;
@@ -15,6 +16,7 @@ class BillModel {
 
   final String billingPeriod;
 
+  final DateTime paymentStartDate;
   final DateTime dueDate;
 
   final String status;
@@ -25,6 +27,7 @@ class BillModel {
 
   BillModel({
     required this.billId,
+    required this.ticketNumber,
     required this.consumerId,
     required this.consumerName,
     required this.accountNumber,
@@ -34,6 +37,7 @@ class BillModel {
     required this.ratePerKwh,
     required this.totalAmount,
     required this.billingPeriod,
+    required this.paymentStartDate,
     required this.dueDate,
     required this.status,
     required this.generatedBy,
@@ -43,6 +47,7 @@ class BillModel {
   Map<String, dynamic> toMap() {
     return {
       'billId': billId,
+      'ticketNumber': ticketNumber,
       'consumerId': consumerId,
       'consumerName': consumerName,
       'accountNumber': accountNumber,
@@ -52,6 +57,7 @@ class BillModel {
       'ratePerKwh': ratePerKwh,
       'totalAmount': totalAmount,
       'billingPeriod': billingPeriod,
+      'paymentStartDate': Timestamp.fromDate(paymentStartDate),
       'dueDate': Timestamp.fromDate(dueDate),
       'status': status,
       'generatedBy': generatedBy,
@@ -60,8 +66,12 @@ class BillModel {
   }
 
   factory BillModel.fromMap(Map<String, dynamic> map) {
+    final billId = map['billId'] ?? '';
+
     return BillModel(
-      billId: map['billId'] ?? '',
+      billId: billId,
+      ticketNumber:
+          BillModel.ticketNumberFor(map, billId),
       consumerId: map['consumerId'] ?? '',
       consumerName: map['consumerName'] ?? '',
       accountNumber: map['accountNumber'] ?? '',
@@ -76,11 +86,46 @@ class BillModel {
       totalAmount:
           (map['totalAmount'] ?? 0).toDouble(),
       billingPeriod: map['billingPeriod'] ?? '',
+      paymentStartDate:
+          (map['paymentStartDate'] as Timestamp?)?.toDate() ??
+              (map['dueDate'] as Timestamp).toDate(),
       dueDate:
           (map['dueDate'] as Timestamp).toDate(),
       status: map['status'] ?? 'unpaid',
       generatedBy: map['generatedBy'] ?? '',
       generatedAt: map['generatedAt'],
     );
+  }
+
+  // ============================================================
+  // TICKET NUMBER
+  // Bills aren't created through this app (the meter reader posts
+  // them directly to Firestore), so there's no counter to assign a
+  // sequential number at creation time like complaints get. Instead
+  // this derives a stable 8-digit ticket number from the bill's own
+  // id, so every bill shows a consistent ticket number without
+  // needing a backend change. A stored 'ticketNumber' field, if
+  // present, always takes priority.
+  // ============================================================
+
+  static String ticketNumberFor(
+    Map<String, dynamic> map,
+    String fallbackId,
+  ) {
+    final stored = map['ticketNumber'];
+    if (stored is String && stored.isNotEmpty) {
+      return stored;
+    }
+
+    final id = fallbackId.isNotEmpty
+        ? fallbackId
+        : (map['billId'] ?? '');
+
+    if (id.isEmpty) return '';
+
+    final digits =
+        (id.hashCode.abs() % 100000000).toString().padLeft(8, '0');
+
+    return 'BIL-$digits';
   }
 }

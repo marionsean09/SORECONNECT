@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/services/complaint_services.dart';
-import 'package:soreconnect/widgets/complaint_image_viewer.dart';
+import 'package:soreconnect/widgets/image_viewer.dart';
 import 'package:soreconnect/widgets/complaint_reply_thread.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
@@ -1578,8 +1578,9 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
               const SizedBox(
                 height: 14,
               ),
-              ComplaintImageThumbnail(
+              AppImageThumbnail(
                 imageBase64: imageBase64,
+                viewerTitle: "Complaint Photo",
               ),
             ],
 

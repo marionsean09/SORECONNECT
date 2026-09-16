@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:soreconnect/services/image_encoding.dart';
 
 class ComplaintService {
   final FirebaseFirestore _firestore =
@@ -10,36 +9,6 @@ class ComplaintService {
 
   final FirebaseAuth _auth =
       FirebaseAuth.instance;
-
-  // Firestore documents are capped at 1 MiB total, so the encoded
-  // image (which is ~33% larger than the raw bytes) is kept well
-  // under that limit to leave room for the rest of the fields.
-  static const int _maxImageBytes = 500 * 1024;
-
-  // ============================================================
-  // ENCODE COMPLAINT IMAGE
-  // Stores the photo directly on the complaint document as base64
-  // instead of Firebase Storage, since Storage requires the Blaze plan.
-  // ============================================================
-
-  Future<Map<String, String>> _encodeComplaintImage(
-    XFile image,
-  ) async {
-    final bytes = await image.readAsBytes();
-
-    if (bytes.length > _maxImageBytes) {
-      throw Exception(
-        'Photo is too large (${(bytes.length / 1024).round()} KB). '
-        'Please choose a smaller photo (under '
-        '${(_maxImageBytes / 1024).round()} KB).',
-      );
-    }
-
-    return {
-      'imageBase64': base64Encode(bytes),
-      'imageMimeType': image.mimeType ?? 'image/jpeg',
-    };
-  }
 
   // ============================================================
   // GENERATE TICKET NUMBER
@@ -154,9 +123,9 @@ class ComplaintService {
       String? imageMimeType;
 
       if (image != null) {
-        final encoded = await _encodeComplaintImage(image);
-        imageBase64 = encoded['imageBase64'];
-        imageMimeType = encoded['imageMimeType'];
+        final encoded = await encodeImageToBase64(image);
+        imageBase64 = encoded.base64;
+        imageMimeType = encoded.mimeType;
       }
 
       // ==========================================================

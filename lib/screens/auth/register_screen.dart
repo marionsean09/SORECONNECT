@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/screens/auth/verify_email_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -11,7 +12,8 @@ class RegisterScreen extends StatefulWidget {
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends State<RegisterScreen>
+    with SingleTickerProviderStateMixin {
   // ============================================================
   // TEXT CONTROLLERS
   // ============================================================
@@ -48,8 +50,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isButtonPressed = false;
 
   String? _errorMessage;
+
+  // Strong ease-out — starts fast so the entrance feels responsive
+  // rather than a generic linear/ease-in-out fade.
+  static const Curve _easeOut = Cubic(0.23, 1, 0.32, 1);
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: _easeOut,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: _easeOut,
+      ),
+    );
+
+    _entranceController.forward();
+  }
 
   // ============================================================
   // DISPOSE
@@ -63,6 +105,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _confirmPasswordController.dispose();
     _accountNumberController.dispose();
     _contactNumberController.dispose();
+    _entranceController.dispose();
 
     super.dispose();
   }
@@ -322,6 +365,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       // ==========================================================
+      // SEND EMAIL VERIFICATION
+      // ==========================================================
+
+      await user.sendEmailVerification();
+
+      debugPrint(
+        "✅ Verification email sent",
+      );
+
+      // ==========================================================
       // SUCCESS
       // ==========================================================
 
@@ -329,13 +382,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Registration successful! Please login.',
+              'Registration successful! Please verify your email.',
             ),
             backgroundColor: Colors.green,
           ),
         );
 
-        Navigator.pop(context);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const VerifyEmailScreen(),
+          ),
+        );
       }
     } on FirebaseAuthException catch (e) {
       debugPrint(
@@ -395,24 +453,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }) {
     return InputDecoration(
       labelText: label,
+      floatingLabelStyle: const TextStyle(
+        color: Color(0xFFD50000),
+      ),
       prefixIcon: Icon(
         icon,
         color: const Color(0xFFD50000),
       ),
+      filled: true,
+      fillColor: Colors.grey.shade100,
+      contentPadding: const EdgeInsets.symmetric(
+        vertical: 16,
+        horizontal: 16,
+      ),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
-          color: Colors.grey.shade300,
+          color: Colors.grey.shade200,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(
           color: Color(0xFFD50000),
-          width: 2,
+          width: 1.5,
         ),
       ),
     );
@@ -433,7 +501,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           initialValue: sorsogonProvince,
           decoration: _inputDecoration(
             label: 'Province',
-            icon: Icons.location_on,
+            icon: Icons.location_on_outlined,
           ),
           items: [
             DropdownMenuItem<String>(
@@ -446,7 +514,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           onChanged: null,
         ),
 
-        const SizedBox(height: 15),
+        const SizedBox(height: 16),
 
         // ========================================================
         // DISTRICT
@@ -456,7 +524,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           initialValue: sorsogonSecondDistrict,
           decoration: _inputDecoration(
             label: 'District',
-            icon: Icons.map,
+            icon: Icons.map_outlined,
           ),
           items: [
             DropdownMenuItem<String>(
@@ -469,7 +537,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           onChanged: null,
         ),
 
-        const SizedBox(height: 15),
+        const SizedBox(height: 16),
 
         // ========================================================
         // MUNICIPALITY
@@ -480,7 +548,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           isExpanded: true,
           decoration: _inputDecoration(
             label: 'Municipality',
-            icon: Icons.location_city,
+            icon: Icons.location_city_outlined,
           ),
           hint: const Text(
             'Select Municipality',
@@ -515,7 +583,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 },
         ),
 
-        const SizedBox(height: 15),
+        const SizedBox(height: 16),
 
         // ========================================================
         // BARANGAY
@@ -526,7 +594,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           isExpanded: true,
           decoration: _inputDecoration(
             label: 'Barangay',
-            icon: Icons.home,
+            icon: Icons.home_outlined,
           ),
           hint: Text(
             _selectedMunicipality == null
@@ -577,7 +645,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 0xFFD50000,
               ).withValues(alpha: 0.06),
               borderRadius:
-                  BorderRadius.circular(12),
+                  BorderRadius.circular(16),
               border: Border.all(
                 color: const Color(
                   0xFFD50000,
@@ -671,18 +739,43 @@ class _RegisterScreenState extends State<RegisterScreen> {
               padding:
                   const EdgeInsets.all(20),
 
-              child: Container(
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: 420),
+
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+
+                  child: SlideTransition(
+                    position: _slideAnimation,
+
+                    child: Container(
                 padding:
-                    const EdgeInsets.all(25),
+                    const EdgeInsets.fromLTRB(25, 30, 25, 25),
 
                 decoration:
                     BoxDecoration(
                   color:
                       Colors.white.withValues(
-                    alpha: 0.95,
+                    alpha: 0.96,
                   ),
                   borderRadius:
-                      BorderRadius.circular(25),
+                      BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: 0.16,
+                      ),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: const Color(0xFFD50000)
+                          .withValues(alpha: 0.08),
+                      blurRadius: 40,
+                      offset: const Offset(0, 20),
+                    ),
+                  ],
                 ),
 
                 child: Column(
@@ -691,14 +784,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     // HEADER
                     // ==================================================
 
-                    const Icon(
-                      Icons.person_add,
-                      size: 60,
-                      color:
-                          Color(0xFFD50000),
+                    Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFD50000)
+                            .withValues(alpha: 0.08),
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt,
+                        size: 40,
+                        color:
+                            Color(0xFFD50000),
+                      ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 16),
 
                     const Text(
                       "CREATE ACCOUNT",
@@ -708,24 +810,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             FontWeight.bold,
                         color:
                             Color(0xFFD50000),
+                        letterSpacing: 0.5,
                       ),
                     ),
 
                     const SizedBox(height: 8),
 
-                    const Text(
+                    Text(
                       'SORECONNECT Consumer Registration',
                       textAlign:
                           TextAlign.center,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
                         color:
-                            Colors.black54,
+                            Colors.grey.shade600,
+                        letterSpacing: 0.2,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 25,
+                      height: 28,
                     ),
 
                     // ==================================================
@@ -737,17 +842,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _fullNameController,
                       textCapitalization:
                           TextCapitalization.words,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
                             "Full Name",
                         icon:
-                            Icons.person,
+                            Icons.person_outline,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 15,
+                      height: 16,
                     ),
 
                     // ==================================================
@@ -760,17 +867,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       keyboardType:
                           TextInputType
                               .emailAddress,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
                             "Email",
                         icon:
-                            Icons.email,
+                            Icons.email_outlined,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 15,
+                      height: 16,
                     ),
 
                     // ==================================================
@@ -782,17 +891,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _accountNumberController,
                       keyboardType:
                           TextInputType.number,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
                             "Account Number",
                         icon:
-                            Icons.numbers,
+                            Icons.numbers_outlined,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 15,
+                      height: 16,
                     ),
 
                     // ==================================================
@@ -804,17 +915,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _contactNumberController,
                       keyboardType:
                           TextInputType.phone,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
                             "Contact Number",
                         icon:
-                            Icons.phone,
+                            Icons.phone_outlined,
                       ),
                     ),
 
                     const SizedBox(
-                      height: 20,
+                      height: 24,
                     ),
 
                     // ==================================================
@@ -827,7 +940,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: Row(
                         children: [
                           const Icon(
-                            Icons.location_on,
+                            Icons.location_on_outlined,
                             color:
                                 Color(0xFFD50000),
                             size: 21,
@@ -856,7 +969,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       height: 5,
                     ),
 
-                    const Align(
+                    Align(
                       alignment:
                           Alignment.centerLeft,
                       child: Text(
@@ -864,7 +977,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         style: TextStyle(
                           fontSize: 11,
                           color:
-                              Colors.black54,
+                              Colors.grey.shade600,
                         ),
                       ),
                     ),
@@ -880,7 +993,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _addressDropdowns(),
 
                     const SizedBox(
-                      height: 20,
+                      height: 24,
                     ),
 
                     // ==================================================
@@ -892,21 +1005,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _passwordController,
                       obscureText:
                           _obscurePassword,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
                             "Password",
                         icon:
-                            Icons.lock,
+                            Icons.lock_outline,
                       ).copyWith(
                         suffixIcon:
                             IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons
-                                    .visibility_off
-                                : Icons
-                                    .visibility,
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(
+                              milliseconds: 150,
+                            ),
+                            child: Icon(
+                              _obscurePassword
+                                  ? Icons
+                                      .visibility_off_outlined
+                                  : Icons
+                                      .visibility_outlined,
+                              key: ValueKey(
+                                _obscurePassword,
+                              ),
+                              color:
+                                  const Color(0xFFD50000),
+                            ),
                           ),
                           onPressed: () {
                             setState(() {
@@ -919,7 +1044,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
 
                     const SizedBox(
-                      height: 15,
+                      height: 16,
                     ),
 
                     // ==================================================
@@ -931,6 +1056,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _confirmPasswordController,
                       obscureText:
                           _obscureConfirmPassword,
+                      cursorColor:
+                          const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
@@ -940,12 +1067,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ).copyWith(
                         suffixIcon:
                             IconButton(
-                          icon: Icon(
-                            _obscureConfirmPassword
-                                ? Icons
-                                    .visibility_off
-                                : Icons
-                                    .visibility,
+                          icon: AnimatedSwitcher(
+                            duration: const Duration(
+                              milliseconds: 150,
+                            ),
+                            child: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons
+                                      .visibility_off_outlined
+                                  : Icons
+                                      .visibility_outlined,
+                              key: ValueKey(
+                                _obscureConfirmPassword,
+                              ),
+                              color:
+                                  const Color(0xFFD50000),
+                            ),
                           ),
                           onPressed: () {
                             setState(() {
@@ -958,15 +1095,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
 
                     const SizedBox(
-                      height: 20,
+                      height: 24,
                     ),
 
                     // ==================================================
                     // ERROR MESSAGE
                     // ==================================================
 
-                    if (_errorMessage != null)
-                      Container(
+                    AnimatedSize(
+                      duration: const Duration(
+                        milliseconds: 220,
+                      ),
+                      curve: _easeOut,
+                      alignment: Alignment.topCenter,
+                      child: _errorMessage == null
+                          ? const SizedBox(
+                              width: double.infinity,
+                            )
+                          : Container(
                         width:
                             double.infinity,
                         padding:
@@ -985,7 +1131,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           borderRadius:
                               BorderRadius
                                   .circular(
-                            10,
+                            16,
                           ),
                         ),
                         child: Row(
@@ -1014,66 +1160,97 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                       Colors.red,
                                   fontSize:
                                       13,
+                                  fontWeight:
+                                      FontWeight.w600,
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
+                    ),
 
                     // ==================================================
                     // REGISTER BUTTON
                     // ==================================================
 
-                    SizedBox(
-                      width:
-                          double.infinity,
-                      height: 50,
-                      child:
-                          ElevatedButton(
-                        onPressed:
-                            _isLoading
-                                ? null
-                                : _register,
-                        style:
-                            ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color(
-                            0xFFD50000,
-                          ),
-                          foregroundColor:
-                              Colors.white,
-                          shape:
-                              RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              12,
-                            ),
-                          ),
-                          elevation: 2,
+                    Listener(
+                      onPointerDown: (_) {
+                        if (!_isLoading) {
+                          setState(
+                            () => _isButtonPressed = true,
+                          );
+                        }
+                      },
+                      onPointerUp: (_) => setState(
+                        () => _isButtonPressed = false,
+                      ),
+                      onPointerCancel: (_) => setState(
+                        () => _isButtonPressed = false,
+                      ),
+
+                      child: AnimatedScale(
+                        scale:
+                            _isButtonPressed ? 0.97 : 1.0,
+                        duration: const Duration(
+                          milliseconds: 120,
                         ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child:
-                                    CircularProgressIndicator(
-                                  color:
-                                      Colors.white,
-                                  strokeWidth:
-                                      2.5,
-                                ),
-                              )
-                            : const Text(
-                                "REGISTER",
-                                style:
-                                    TextStyle(
-                                  fontSize: 16,
-                                  fontWeight:
-                                      FontWeight.bold,
+                        curve: Curves.easeOut,
+
+                        child: SizedBox(
+                          width:
+                              double.infinity,
+                          height: 55,
+                          child:
+                              ElevatedButton(
+                            onPressed:
+                                _isLoading
+                                    ? null
+                                    : _register,
+                            style:
+                                ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  const Color(
+                                0xFFD50000,
+                              ),
+                              foregroundColor:
+                                  Colors.white,
+                              elevation: 0,
+                              shadowColor:
+                                  Colors.transparent,
+                              shape:
+                                  RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  16,
                                 ),
                               ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      color:
+                                          Colors.white,
+                                      strokeWidth:
+                                          2.5,
+                                    ),
+                                  )
+                                : const Text(
+                                    "REGISTER",
+                                    style:
+                                        TextStyle(
+                                      fontSize: 16,
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                          ),
+                        ),
                       ),
                     ),
 
@@ -1086,6 +1263,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     // ==================================================
 
                     TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor:
+                            const Color(0xFFD50000),
+                        overlayColor:
+                            const Color(0xFFD50000)
+                                .withValues(alpha: 0.08),
+                      ),
                       onPressed:
                           _isLoading
                               ? null
@@ -1106,6 +1290,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
                   ],
+                ),
+                    ),
+                  ),
                 ),
               ),
             ),

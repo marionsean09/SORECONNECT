@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
-import 'package:soreconnect/widgets/complaint_image_viewer.dart';
+import 'package:soreconnect/widgets/image_viewer.dart';
 import 'package:soreconnect/widgets/complaint_reply_thread.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
@@ -1452,11 +1452,12 @@ class _MonitorComplaintsScreenState
                                   'imageBase64',
                                 ).isNotEmpty) ...[
                                   const SizedBox(height: 12),
-                                  ComplaintImageThumbnail(
+                                  AppImageThumbnail(
                                     imageBase64: _stringValue(
                                       data,
                                       'imageBase64',
                                     ),
+                                    viewerTitle: "Complaint Photo",
                                   ),
                                 ],
 

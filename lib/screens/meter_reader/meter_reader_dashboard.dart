@@ -691,7 +691,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
         (data['status'] ?? 'Pending').toString();
 
     final isVerified =
-        status.toLowerCase() == 'verified';
+        status.toLowerCase() == 'verified' ||
+            status.toLowerCase() == 'billed';
 
     final location =
         _getReadingLocation(data);
@@ -1058,10 +1059,12 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                   doc.data()
                       as Map<String, dynamic>;
 
-              return data['status']
-                      ?.toString()
-                      .toLowerCase() ==
-                  'verified';
+              final status = data['status']
+                  ?.toString()
+                  .toLowerCase();
+
+              return status == 'verified' ||
+                  status == 'billed';
             }).length;
 
             // --------------------------------------------------
@@ -1332,7 +1335,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
 
                       _summaryCard(
                         Icons.verified,
-                        'Verified',
+                        'Billed',
                         verified,
                         Colors.green,
                       ),

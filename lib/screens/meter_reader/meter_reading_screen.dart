@@ -16,7 +16,8 @@ class MeterReadingScreen extends StatefulWidget {
   State<MeterReadingScreen> createState() => _MeterReadingScreenState();
 }
 
-class _MeterReadingScreenState extends State<MeterReadingScreen> {
+class _MeterReadingScreenState extends State<MeterReadingScreen>
+    with SingleTickerProviderStateMixin {
   // ============================================================
   // FIREBASE / SERVICES
   // ============================================================
@@ -81,6 +82,17 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
   static const Color _lightGreen =
       Color(0xFFE8F5E9);
 
+  // Strong ease-out — starts fast so the entrance feels responsive
+  // rather than a generic linear/ease-in-out fade.
+  static const Curve _easeOut = Cubic(0.23, 1, 0.32, 1);
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  bool _searchButtonPressed = false;
+  bool _submitButtonPressed = false;
+
   // ============================================================
   // INIT
   // ============================================================
@@ -104,6 +116,28 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
       _computeBill(showError: false);
     });
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: _easeOut,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: _easeOut,
+      ),
+    );
+
+    _entranceController.forward();
   }
 
   // ============================================================
@@ -116,6 +150,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
     _currentReadingController.dispose();
 
     _rateSub?.cancel();
+    _entranceController.dispose();
 
     super.dispose();
   }
@@ -633,6 +668,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
               )
               .doc();
 
+      final billRef =
+          _firestore
+              .collection(
+                "bills",
+              )
+              .doc();
+
       final billingPeriod =
           DateFormat(
             "MMMM yyyy",
@@ -731,7 +773,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             billingPeriod,
 
         status:
-            "Pending",
+            "Billed",
 
         recordedBy:
             meterReader?.email ??
@@ -739,48 +781,92 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       );
 
       // ----------------------------------------------------------
-      // SAVE
+      // RESOLVED LOCATION
       // ----------------------------------------------------------
 
-      await readingRef.set({
+      final resolvedMunicipality =
+          municipality.isEmpty
+              ? (_selectedMunicipality ?? "")
+              : municipality;
+
+      final resolvedBarangay =
+          barangay.isEmpty
+              ? (_selectedBarangay ?? "")
+              : barangay;
+
+      final resolvedProvince =
+          province.isEmpty
+              ? sorsogonProvince
+              : province;
+
+      final resolvedAddress =
+          buildSorsogonAddress(
+        municipality: resolvedMunicipality,
+        barangay: resolvedBarangay,
+      );
+
+      // ----------------------------------------------------------
+      // PAYMENT WINDOW
+      //
+      // Relative to the reading date: payment opens 4 days after
+      // the reading, and is due 6 days after that payment start.
+      // ----------------------------------------------------------
+
+      final now = DateTime.now();
+
+      final paymentStartDate = now.add(
+        const Duration(days: 4),
+      );
+
+      final dueDate = paymentStartDate.add(
+        const Duration(days: 6),
+      );
+
+      // ----------------------------------------------------------
+      // SAVE READING + BILL TOGETHER
+      //
+      // The bill is posted directly for the consumer without a
+      // separate teller verification step. The teller can still
+      // edit the bill's paid/unpaid/cancelled status afterward.
+      // ----------------------------------------------------------
+
+      final batch = _firestore.batch();
+
+      batch.set(readingRef, {
         ...reading.toMap(),
-
-        "barangay":
-            barangay.isEmpty
-                ? _selectedBarangay
-                : barangay,
-
-        "municipality":
-            municipality.isEmpty
-                ? _selectedMunicipality
-                : municipality,
-
-        "province":
-            province.isEmpty
-                ? sorsogonProvince
-                : province,
-
-        "address":
-            buildSorsogonAddress(
-          municipality:
-              municipality.isEmpty
-                  ? (_selectedMunicipality ??
-                      "")
-                  : municipality,
-          barangay:
-              barangay.isEmpty
-                  ? (_selectedBarangay ??
-                      "")
-                  : barangay,
-        ),
-
-        "recordedAt":
-            FieldValue.serverTimestamp(),
+        "barangay": resolvedBarangay,
+        "municipality": resolvedMunicipality,
+        "province": resolvedProvince,
+        "address": resolvedAddress,
+        "recordedAt": FieldValue.serverTimestamp(),
       });
 
+      batch.set(billRef, {
+        "billId": billRef.id,
+        "consumerId": consumerId,
+        "consumerName": consumerName,
+        "accountNumber": accountNumber,
+        "barangay": resolvedBarangay,
+        "municipality": resolvedMunicipality,
+        "province": resolvedProvince,
+        "address": resolvedAddress,
+        "previousReading": _previousReading,
+        "currentReading": currentReading,
+        "consumption": consumption,
+        "ratePerKwh": _currentRate,
+        "totalAmount": computedAmount,
+        "billingPeriod": billingPeriod,
+        "paymentStartDate": Timestamp.fromDate(paymentStartDate),
+        "dueDate": Timestamp.fromDate(dueDate),
+        "status": "unpaid",
+        "generatedBy": meterReader?.email ?? "Meter Reader",
+        "generatedAt": FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
       _showSnackBar(
-        "Meter reading submitted successfully.\n"
-        "Waiting for Teller verification.",
+        "Meter reading submitted and bill posted successfully.",
         isError: false,
       );
 
@@ -840,6 +926,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
           style: TextStyle(
             fontWeight:
                 FontWeight.w600,
+            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -856,7 +943,11 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             30,
           ),
 
-          child:
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child:
               Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
@@ -884,7 +975,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                   fontWeight:
                       FontWeight.bold,
                   color:
-                      Colors.black,
+                      Colors.black87,
                 ),
               ),
 
@@ -910,7 +1001,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
               _buildMunicipalityDropdown(),
 
               const SizedBox(
-                height: 14,
+                height: 16,
               ),
 
               _buildBarangayDropdown(),
@@ -939,6 +1030,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 ..._buildReadingForm(),
             ],
           ),
+            ),
+          ),
         ),
       ),
     );
@@ -962,20 +1055,33 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             Colors.white,
 
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(24),
 
         boxShadow: [
           BoxShadow(
             color:
                 Colors.black.withValues(
-              alpha: 0.05,
+              alpha: 0.16,
             ),
             blurRadius:
-                12,
+                24,
             offset:
                 const Offset(
               0,
-              5,
+              12,
+            ),
+          ),
+          BoxShadow(
+            color:
+                _primaryOrange.withValues(
+              alpha: 0.08,
+            ),
+            blurRadius:
+                40,
+            offset:
+                const Offset(
+              0,
+              20,
             ),
           ),
         ],
@@ -995,13 +1101,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
               borderRadius:
                   BorderRadius.circular(
-                15,
+                16,
               ),
             ),
 
             child:
                 const Icon(
-              Icons.speed,
+              Icons.speed_outlined,
               color:
                   _primaryOrange,
               size:
@@ -1035,8 +1141,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 ),
 
                 Text(
-                  "Submit a household meter reading "
-                  "for teller verification.",
+                  "Submit a household meter reading. "
+                  "A bill is posted to the consumer immediately.",
                   style:
                       TextStyle(
                     fontSize: 13,
@@ -1073,12 +1179,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             Colors.white,
 
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(16),
 
         border:
             Border.all(
           color:
-              Colors.grey.shade300,
+              Colors.grey.shade200,
         ),
 
         boxShadow: [
@@ -1117,7 +1223,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
               const Row(
             children: [
               Icon(
-                Icons.location_city,
+                Icons.location_city_outlined,
                 color:
                     _primaryOrange,
                 size:
@@ -1201,12 +1307,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 : Colors.grey.shade100,
 
         borderRadius:
-            BorderRadius.circular(18),
+            BorderRadius.circular(16),
 
         border:
             Border.all(
           color:
-              Colors.grey.shade300,
+              Colors.grey.shade200,
         ),
 
         boxShadow:
@@ -1249,7 +1355,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
               Row(
             children: [
               Icon(
-                Icons.location_on,
+                Icons.location_on_outlined,
                 color:
                     enabled
                         ? Colors.grey.shade700
@@ -1339,20 +1445,33 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             Colors.white,
 
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(24),
 
         boxShadow: [
           BoxShadow(
             color:
                 Colors.black.withValues(
-              alpha: 0.05,
+              alpha: 0.16,
             ),
             blurRadius:
-                10,
+                24,
             offset:
                 const Offset(
               0,
-              4,
+              12,
+            ),
+          ),
+          BoxShadow(
+            color:
+                _primaryOrange.withValues(
+              alpha: 0.08,
+            ),
+            blurRadius:
+                40,
+            offset:
+                const Offset(
+              0,
+              20,
             ),
           ),
         ],
@@ -1407,6 +1526,9 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                       enabled &&
                       !_isLoading,
 
+                  cursorColor:
+                      _primaryOrange,
+
                   keyboardType:
                       TextInputType.text,
 
@@ -1452,12 +1574,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                         OutlineInputBorder(
                       borderRadius:
                           BorderRadius.circular(
-                        14,
+                        16,
                       ),
                       borderSide:
                           BorderSide(
                         color:
-                            Colors.grey.shade300,
+                            Colors.grey.shade200,
                       ),
                     ),
 
@@ -1465,12 +1587,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                         OutlineInputBorder(
                       borderRadius:
                           BorderRadius.circular(
-                        14,
+                        16,
                       ),
                       borderSide:
                           BorderSide(
                         color:
-                            Colors.grey.shade300,
+                            Colors.grey.shade200,
                       ),
                     ),
 
@@ -1478,14 +1600,14 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                         OutlineInputBorder(
                       borderRadius:
                           BorderRadius.circular(
-                        14,
+                        16,
                       ),
                       borderSide:
                           const BorderSide(
                         color:
                             _primaryOrange,
                         width:
-                            2,
+                            1.5,
                       ),
                     ),
                   ),
@@ -1496,7 +1618,28 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 width: 10,
               ),
 
-              SizedBox(
+              Listener(
+                onPointerDown: (_) {
+                  if (!_isLoading && enabled) {
+                    setState(
+                      () => _searchButtonPressed = true,
+                    );
+                  }
+                },
+                onPointerUp: (_) => setState(
+                  () => _searchButtonPressed = false,
+                ),
+                onPointerCancel: (_) => setState(
+                  () => _searchButtonPressed = false,
+                ),
+                child: AnimatedScale(
+                  scale:
+                      _searchButtonPressed ? 0.97 : 1.0,
+                  duration: const Duration(
+                    milliseconds: 120,
+                  ),
+                  curve: Curves.easeOut,
+                  child: SizedBox(
                 height: 55,
 
                 child:
@@ -1533,7 +1676,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                         RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(
-                        14,
+                        16,
                       ),
                     ),
                   ),
@@ -1556,6 +1699,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                               size:
                                   24,
                             ),
+                ),
+                  ),
                 ),
               ),
             ],
@@ -1590,20 +1735,33 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             Colors.white,
 
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(24),
 
         boxShadow: [
           BoxShadow(
             color:
                 Colors.black.withValues(
-              alpha: 0.04,
+              alpha: 0.16,
             ),
             blurRadius:
-                10,
+                24,
             offset:
                 const Offset(
               0,
-              4,
+              12,
+            ),
+          ),
+          BoxShadow(
+            color:
+                _primaryOrange.withValues(
+              alpha: 0.08,
+            ),
+            blurRadius:
+                40,
+            offset:
+                const Offset(
+              0,
+              20,
             ),
           ),
         ],
@@ -1630,7 +1788,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             child:
                 Icon(
               locationReady
-                  ? Icons.person_search
+                  ? Icons.person_search_outlined
                   : Icons.location_searching,
               size:
                   36,
@@ -1640,7 +1798,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
           ),
 
           const SizedBox(
-            height: 15,
+            height: 16,
           ),
 
           Text(
@@ -1764,21 +1922,34 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
           borderRadius:
               BorderRadius.circular(
-            20,
+            24,
           ),
 
           boxShadow: [
             BoxShadow(
               color:
                   Colors.black.withValues(
-                alpha: 0.05,
+                alpha: 0.16,
               ),
               blurRadius:
-                  10,
+                  24,
               offset:
                   const Offset(
                 0,
-                4,
+                12,
+              ),
+            ),
+            BoxShadow(
+              color:
+                  _primaryOrange.withValues(
+                alpha: 0.08,
+              ),
+              blurRadius:
+                  40,
+              offset:
+                  const Offset(
+                0,
+                20,
               ),
             ),
           ],
@@ -1805,13 +1976,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
                     borderRadius:
                         BorderRadius.circular(
-                      12,
+                      16,
                     ),
                   ),
 
                   child:
                       const Icon(
-                    Icons.person,
+                    Icons.person_outline,
                     color:
                         _primaryOrange,
                   ),
@@ -1834,7 +2005,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             ),
 
             const SizedBox(
-              height: 18,
+              height: 16,
             ),
 
             _buildInfoRow(
@@ -1892,7 +2063,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
                 borderRadius:
                     BorderRadius.circular(
-                  12,
+                  16,
                 ),
               ),
 
@@ -1900,7 +2071,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                   Row(
                 children: [
                   const Icon(
-                    Icons.speed,
+                    Icons.speed_outlined,
                     color:
                         _primaryOrange,
                   ),
@@ -1936,7 +2107,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       ),
 
       const SizedBox(
-        height: 22,
+        height: 24,
       ),
 
       // ========================================================
@@ -1982,21 +2153,34 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
           borderRadius:
               BorderRadius.circular(
-            20,
+            24,
           ),
 
           boxShadow: [
             BoxShadow(
               color:
                   Colors.black.withValues(
-                alpha: 0.04,
+                alpha: 0.16,
               ),
               blurRadius:
-                  10,
+                  24,
               offset:
                   const Offset(
                 0,
-                4,
+                12,
+              ),
+            ),
+            BoxShadow(
+              color:
+                  _primaryOrange.withValues(
+                alpha: 0.08,
+              ),
+              blurRadius:
+                  40,
+              offset:
+                  const Offset(
+                0,
+                20,
               ),
             ),
           ],
@@ -2009,6 +2193,9 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
           enabled:
               !_isLoading,
+
+          cursorColor:
+              _primaryOrange,
 
           keyboardType:
               const TextInputType.numberWithOptions(
@@ -2031,7 +2218,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
             prefixIcon:
                 const Icon(
-              Icons.speed,
+              Icons.speed_outlined,
               color:
                   _primaryOrange,
             ),
@@ -2052,12 +2239,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 OutlineInputBorder(
               borderRadius:
                   BorderRadius.circular(
-                14,
+                16,
               ),
               borderSide:
                   BorderSide(
                 color:
-                    Colors.grey.shade300,
+                    Colors.grey.shade200,
               ),
             ),
 
@@ -2065,12 +2252,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 OutlineInputBorder(
               borderRadius:
                   BorderRadius.circular(
-                14,
+                16,
               ),
               borderSide:
                   BorderSide(
                 color:
-                    Colors.grey.shade300,
+                    Colors.grey.shade200,
               ),
             ),
 
@@ -2078,14 +2265,14 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                 OutlineInputBorder(
               borderRadius:
                   BorderRadius.circular(
-                14,
+                16,
               ),
               borderSide:
                   const BorderSide(
                 color:
                     _primaryOrange,
                 width:
-                    2,
+                    1.5,
               ),
             ),
           ),
@@ -2093,7 +2280,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
       ),
 
       const SizedBox(
-        height: 22,
+        height: 24,
       ),
 
       // ========================================================
@@ -2114,21 +2301,34 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
           borderRadius:
               BorderRadius.circular(
-            20,
+            24,
           ),
 
           boxShadow: [
             BoxShadow(
               color:
                   Colors.black.withValues(
-                alpha: 0.05,
+                alpha: 0.16,
               ),
               blurRadius:
-                  10,
+                  24,
               offset:
                   const Offset(
                 0,
-                4,
+                12,
+              ),
+            ),
+            BoxShadow(
+              color:
+                  _primaryOrange.withValues(
+                alpha: 0.08,
+              ),
+              blurRadius:
+                  40,
+              offset:
+                  const Offset(
+                0,
+                20,
               ),
             ),
           ],
@@ -2155,13 +2355,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
                     borderRadius:
                         BorderRadius.circular(
-                      12,
+                      16,
                     ),
                   ),
 
                   child:
                       const Icon(
-                    Icons.receipt_long,
+                    Icons.receipt_long_outlined,
                     color:
                         _primaryOrange,
                   ),
@@ -2210,13 +2410,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             ),
 
             const SizedBox(
-              height: 15,
+              height: 16,
             ),
 
             const Divider(),
 
             const SizedBox(
-              height: 15,
+              height: 16,
             ),
 
             // ==================================================
@@ -2239,7 +2439,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
                 borderRadius:
                     BorderRadius.circular(
-                  15,
+                  16,
                 ),
               ),
 
@@ -2289,7 +2489,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             ),
 
             const SizedBox(
-              height: 18,
+              height: 16,
             ),
 
             // ==================================================
@@ -2312,7 +2512,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
 
                 borderRadius:
                     BorderRadius.circular(
-                  14,
+                  16,
                 ),
               ),
 
@@ -2335,9 +2535,10 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                   Expanded(
                     child:
                         Text(
-                      "The meter reading will be reviewed "
-                      "by the teller before the official bill "
-                      "is generated.",
+                      "The bill will be posted to the consumer "
+                      "immediately upon submission. The teller "
+                      "can update its paid/unpaid status "
+                      "afterward.",
                       style:
                           TextStyle(
                         color:
@@ -2361,7 +2562,28 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
             // SUBMIT BUTTON
             // ==================================================
 
-            SizedBox(
+            Listener(
+              onPointerDown: (_) {
+                if (!_isLoading) {
+                  setState(
+                    () => _submitButtonPressed = true,
+                  );
+                }
+              },
+              onPointerUp: (_) => setState(
+                () => _submitButtonPressed = false,
+              ),
+              onPointerCancel: (_) => setState(
+                () => _submitButtonPressed = false,
+              ),
+              child: AnimatedScale(
+                scale:
+                    _submitButtonPressed ? 0.97 : 1.0,
+                duration: const Duration(
+                  milliseconds: 120,
+                ),
+                curve: Curves.easeOut,
+                child: SizedBox(
               width:
                   double.infinity,
 
@@ -2393,7 +2615,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                       RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(
-                      15,
+                      16,
                     ),
                   ),
                 ),
@@ -2428,7 +2650,10 @@ class _MeterReadingScreenState extends State<MeterReadingScreen> {
                         15,
                     fontWeight:
                         FontWeight.w600,
+                    letterSpacing: 0.2,
                   ),
+                ),
+              ),
                 ),
               ),
             ),

@@ -4,25 +4,31 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 // ============================================================
-// COMPLAINT IMAGE THUMBNAIL
+// APP IMAGE THUMBNAIL
 // Tappable thumbnail (decoded from a base64 string stored in
-// Firestore) that opens the image full-screen.
+// Firestore) that opens the image full-screen. Shared by
+// complaints and announcements.
 // ============================================================
 
-class ComplaintImageThumbnail extends StatelessWidget {
-  const ComplaintImageThumbnail({
+class AppImageThumbnail extends StatelessWidget {
+  const AppImageThumbnail({
     super.key,
     required this.imageBase64,
     this.height = 160,
+    this.viewerTitle = 'Photo',
   });
 
   final String imageBase64;
   final double height;
+  final String viewerTitle;
 
   void _openFullScreen(BuildContext context, Uint8List bytes) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FullScreenImageViewer(imageBytes: bytes),
+        builder: (_) => FullScreenImageViewer(
+          imageBytes: bytes,
+          title: viewerTitle,
+        ),
         fullscreenDialog: true,
       ),
     );
@@ -86,9 +92,14 @@ class ComplaintImageThumbnail extends StatelessWidget {
 // ============================================================
 
 class FullScreenImageViewer extends StatelessWidget {
-  const FullScreenImageViewer({super.key, required this.imageBytes});
+  const FullScreenImageViewer({
+    super.key,
+    required this.imageBytes,
+    this.title = 'Photo',
+  });
 
   final Uint8List imageBytes;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +109,7 @@ class FullScreenImageViewer extends StatelessWidget {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Complaint Photo'),
+        title: Text(title),
       ),
       body: Center(
         child: InteractiveViewer(

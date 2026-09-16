@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:soreconnect/services/image_encoding.dart';
 
 class AnnouncementService {
   final FirebaseFirestore _firestore =
@@ -11,8 +13,8 @@ class AnnouncementService {
     required String typeLabel,
     required String? postedBy,
     required String coverageType,
-    String? municipality,
-    String? barangay,
+    List<String> municipalities = const [],
+    List<String> barangays = const [],
     required String province,
     required String district,
     String? coveredArea,
@@ -24,7 +26,23 @@ class AnnouncementService {
     String? disconnectionTime,
     DateTime? readingDate,
     required String status,
+    XFile? image,
   }) async {
+    // ==============================================================
+    // ENCODE ATTACHED IMAGE (IF ANY)
+    // Stored directly on the announcement document as base64,
+    // the same approach used for complaint photos.
+    // ==============================================================
+
+    String? imageBase64;
+    String? imageMimeType;
+
+    if (image != null) {
+      final encoded = await encodeImageToBase64(image);
+      imageBase64 = encoded.base64;
+      imageMimeType = encoded.mimeType;
+    }
+
     await _firestore
         .collection('announcements')
         .add({
@@ -45,15 +63,19 @@ class AnnouncementService {
       'datePosted':
           FieldValue.serverTimestamp(),
 
+      'imageBase64': imageBase64,
+
+      'imageMimeType': imageMimeType,
+
       // ============================================================
       // COVERAGE
       // ============================================================
 
       'coverageType': coverageType,
 
-      'municipality': municipality,
+      'municipalities': municipalities,
 
-      'barangay': barangay,
+      'barangays': barangays,
 
       'province': province,
 

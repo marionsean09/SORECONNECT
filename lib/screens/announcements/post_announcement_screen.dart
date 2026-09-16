@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
@@ -67,17 +70,26 @@ class _PostAnnouncementScreenState
 
   String _coverageType = 'all';
 
-  String? _selectedMunicipality;
-  String? _selectedBarangay;
+  List<String> _selectedMunicipalities = [];
+  List<String> _selectedBarangays = [];
 
   List<String> get _municipalities {
     return getSorsogonSecondDistrictMunicipalities();
   }
 
   List<String> get _barangays {
-    return getBarangaysForMunicipality(
-      _selectedMunicipality,
-    );
+    final barangaySet = <String>{};
+
+    for (final municipality in _selectedMunicipalities) {
+      barangaySet.addAll(
+        getBarangaysForMunicipality(municipality),
+      );
+    }
+
+    final barangayList = barangaySet.toList();
+    barangayList.sort();
+
+    return barangayList;
   }
 
   // ============================================================
@@ -102,6 +114,14 @@ class _PostAnnouncementScreenState
   // ============================================================
 
   DateTime _selectedReadingDate = DateTime.now();
+
+  // ============================================================
+  // PHOTO
+  // ============================================================
+
+  final ImagePicker _imagePicker = ImagePicker();
+  XFile? _pickedImage;
+  Uint8List? _pickedImageBytes;
 
   // ============================================================
   // GENERAL STATE
@@ -160,10 +180,9 @@ class _PostAnnouncementScreenState
     }
 
     if (_coverageType == 'municipality') {
-      if (_selectedMunicipality == null ||
-          _selectedMunicipality!.isEmpty) {
+      if (_selectedMunicipalities.isEmpty) {
         _showError(
-          'Please select a municipality.',
+          'Please select at least one municipality.',
         );
         return false;
       }
@@ -172,18 +191,16 @@ class _PostAnnouncementScreenState
     }
 
     if (_coverageType == 'barangay') {
-      if (_selectedMunicipality == null ||
-          _selectedMunicipality!.isEmpty) {
+      if (_selectedMunicipalities.isEmpty) {
         _showError(
-          'Please select a municipality first.',
+          'Please select at least one municipality first.',
         );
         return false;
       }
 
-      if (_selectedBarangay == null ||
-          _selectedBarangay!.isEmpty) {
+      if (_selectedBarangays.isEmpty) {
         _showError(
-          'Please select a barangay.',
+          'Please select at least one barangay.',
         );
         return false;
       }
@@ -205,13 +222,154 @@ class _PostAnnouncementScreenState
       _coverageType = value;
 
       if (value == 'all') {
-        _selectedMunicipality = null;
-        _selectedBarangay = null;
+        _selectedMunicipalities = [];
+        _selectedBarangays = [];
       }
 
       if (value == 'municipality') {
-        _selectedBarangay = null;
+        _selectedBarangays = [];
       }
+    });
+  }
+
+  // ============================================================
+  // MULTI-SELECT PICKER
+  // ============================================================
+
+  Future<List<String>> _showMultiSelectDialog({
+    required String title,
+    required List<String> options,
+    required List<String> initiallySelected,
+  }) async {
+    final selected = Set<String>.from(initiallySelected);
+    final searchController = TextEditingController();
+    List<String> filtered = List<String>.from(options);
+
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Text(title),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search...',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          filtered = options
+                              .where(
+                                (o) => o
+                                    .toLowerCase()
+                                    .contains(value.toLowerCase()),
+                              )
+                              .toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 320,
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Text('No matches found.'),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: filtered.length,
+                              itemBuilder: (context, index) {
+                                final option = filtered[index];
+                                final isSelected =
+                                    selected.contains(option);
+
+                                return CheckboxListTile(
+                                  value: isSelected,
+                                  dense: true,
+                                  title: Text(option),
+                                  onChanged: (checked) {
+                                    setDialogState(() {
+                                      if (checked == true) {
+                                        selected.add(option);
+                                      } else {
+                                        selected.remove(option);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop(null),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(
+                    dialogContext,
+                  ).pop(selected.toList()),
+                  child: const Text('Done'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    searchController.dispose();
+
+    return result ?? initiallySelected;
+  }
+
+  Future<void> _pickMunicipalities() async {
+    final result = await _showMultiSelectDialog(
+      title: 'Select Municipalities',
+      options: _municipalities,
+      initiallySelected: _selectedMunicipalities,
+    );
+
+    setState(() {
+      _selectedMunicipalities = result;
+
+      final validBarangays = _barangays.toSet();
+
+      _selectedBarangays = _selectedBarangays
+          .where(validBarangays.contains)
+          .toList();
+    });
+  }
+
+  Future<void> _pickBarangays() async {
+    if (_selectedMunicipalities.isEmpty) {
+      _showError('Please select a municipality first.');
+      return;
+    }
+
+    final result = await _showMultiSelectDialog(
+      title: 'Select Barangays',
+      options: _barangays,
+      initiallySelected: _selectedBarangays,
+    );
+
+    setState(() {
+      _selectedBarangays = result;
     });
   }
 
@@ -351,6 +509,79 @@ class _PostAnnouncementScreenState
   }
 
   // ============================================================
+  // PHOTO PICKER
+  // ============================================================
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 60,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
+
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+
+      if (!mounted) return;
+
+      setState(() {
+        _pickedImage = image;
+        _pickedImageBytes = bytes;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("Failed to pick image: $e"),
+        ),
+      );
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _pickedImage = null;
+      _pickedImageBytes = null;
+    });
+  }
+
+  void _showImageSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text("Take a photo"),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text("Choose from gallery"),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
   // ERROR MESSAGE
   // ============================================================
 
@@ -398,6 +629,55 @@ class _PostAnnouncementScreenState
   }
 
   // ============================================================
+  // MULTI-SELECT FIELD
+  // ============================================================
+
+  Widget _buildMultiSelectField({
+    required String label,
+    required IconData icon,
+    required List<String> selectedValues,
+    required VoidCallback onTap,
+    required String emptyHint,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          prefixIcon: Icon(icon),
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+        ),
+        child: selectedValues.isEmpty
+            ? Text(
+                emptyHint,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                ),
+              )
+            : Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: selectedValues.map((value) {
+                  return Chip(
+                    label: Text(
+                      value,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize:
+                        MaterialTapTargetSize.shrinkWrap,
+                  );
+                }).toList(),
+              ),
+      ),
+    );
+  }
+
+  // ============================================================
   // SECTION HEADER
   // ============================================================
 
@@ -419,6 +699,82 @@ class _PostAnnouncementScreenState
             fontSize: 17,
           ),
         ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // PHOTO SECTION
+  // ============================================================
+
+  Widget _buildPhotoSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: Icons.image_outlined,
+          title: 'Photo (optional)',
+        ),
+
+        const SizedBox(height: 12),
+
+        if (_pickedImageBytes != null)
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.memory(
+                  _pickedImageBytes!,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: _removeImage,
+                  child: const CircleAvatar(
+                    radius: 15,
+                    backgroundColor: Colors.black54,
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else
+          InkWell(
+            onTap: _showImageSourceSheet,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: double.infinity,
+              height: 90,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade400),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    color: Colors.grey,
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    "Add Image",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -475,67 +831,26 @@ class _PostAnnouncementScreenState
         if (_coverageType != 'all') ...[
           const SizedBox(height: 16),
 
-          DropdownButtonFormField<String>(
-            initialValue: _selectedMunicipality,
-            decoration: InputDecoration(
-              labelText: 'Municipality',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              prefixIcon: const Icon(
-                Icons.location_city,
-              ),
-            ),
-            items: _municipalities.map(
-              (municipality) {
-                return DropdownMenuItem<String>(
-                  value: municipality,
-                  child: Text(
-                    municipality,
-                  ),
-                );
-              },
-            ).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedMunicipality = value;
-                _selectedBarangay = null;
-              });
-            },
+          _buildMultiSelectField(
+            label: 'Municipalities',
+            icon: Icons.location_city,
+            selectedValues: _selectedMunicipalities,
+            emptyHint: 'Tap to select municipalities',
+            onTap: _pickMunicipalities,
           ),
         ],
 
         if (_coverageType == 'barangay') ...[
           const SizedBox(height: 16),
 
-          DropdownButtonFormField<String>(
-            initialValue: _selectedBarangay,
-            decoration: InputDecoration(
-              labelText: 'Barangay',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              prefixIcon: const Icon(
-                Icons.home_work_outlined,
-              ),
-            ),
-            items: _barangays.map(
-              (barangay) {
-                return DropdownMenuItem<String>(
-                  value: barangay,
-                  child: Text(
-                    barangay,
-                  ),
-                );
-              },
-            ).toList(),
-            onChanged: _selectedMunicipality == null
-                ? null
-                : (value) {
-                    setState(() {
-                      _selectedBarangay = value;
-                    });
-                  },
+          _buildMultiSelectField(
+            label: 'Barangays',
+            icon: Icons.home_work_outlined,
+            selectedValues: _selectedBarangays,
+            emptyHint: _selectedMunicipalities.isEmpty
+                ? 'Select a municipality first'
+                : 'Tap to select barangays',
+            onTap: _pickBarangays,
           ),
         ],
 
@@ -550,6 +865,16 @@ class _PostAnnouncementScreenState
   // COVERAGE PREVIEW
   // ============================================================
 
+  String _buildBarangayCoverageText() {
+    if (_selectedMunicipalities.length == 1) {
+      return '${_selectedBarangays.join(', ')}, '
+          '${_selectedMunicipalities.first}, Sorsogon';
+    }
+
+    return '${_selectedBarangays.join(', ')} '
+        '(${_selectedMunicipalities.join(', ')}), Sorsogon';
+  }
+
   Widget _buildCoveragePreview() {
     String coverageText;
 
@@ -557,25 +882,22 @@ class _PostAnnouncementScreenState
       coverageText =
           'All areas within the Sorsogon 2nd District';
     } else if (_coverageType == 'municipality') {
-      if (_selectedMunicipality == null) {
+      if (_selectedMunicipalities.isEmpty) {
         coverageText =
-            'Select a municipality';
+            'Select at least one municipality';
       } else {
         coverageText =
-            '$_selectedMunicipality, Sorsogon';
+            '${_selectedMunicipalities.join(', ')}, Sorsogon';
       }
     } else {
-      if (_selectedMunicipality == null) {
+      if (_selectedMunicipalities.isEmpty) {
         coverageText =
-            'Select a municipality and barangay';
-      } else if (_selectedBarangay == null) {
+            'Select at least one municipality and barangay';
+      } else if (_selectedBarangays.isEmpty) {
         coverageText =
-            'Select a barangay';
+            'Select at least one barangay';
       } else {
-        coverageText = buildSorsogonAddress(
-          municipality: _selectedMunicipality!,
-          barangay: _selectedBarangay!,
-        );
+        coverageText = _buildBarangayCoverageText();
       }
     }
 
@@ -908,32 +1230,23 @@ class _PostAnnouncementScreenState
       // COVERAGE DATA
       // ========================================================
 
-      String? municipality;
-      String? barangay;
+      List<String> municipalities = [];
+      List<String> barangays = [];
       String? coveredArea;
 
       if (_coverageType == 'all') {
-        municipality = null;
-        barangay = null;
         coveredArea =
             'All areas within the Sorsogon 2nd District';
       } else if (_coverageType == 'municipality') {
-        municipality = _selectedMunicipality;
-        barangay = null;
+        municipalities = _selectedMunicipalities;
 
         coveredArea =
-            '$_selectedMunicipality, Sorsogon';
+            '${_selectedMunicipalities.join(', ')}, Sorsogon';
       } else {
-        municipality = _selectedMunicipality;
-        barangay = _selectedBarangay;
+        municipalities = _selectedMunicipalities;
+        barangays = _selectedBarangays;
 
-        if (municipality != null &&
-            barangay != null) {
-          coveredArea = buildSorsogonAddress(
-            municipality: municipality,
-            barangay: barangay,
-          );
-        }
+        coveredArea = _buildBarangayCoverageText();
       }
 
       // ========================================================
@@ -965,9 +1278,9 @@ class _PostAnnouncementScreenState
 
         'coverageType': _coverageType,
 
-        'municipality': municipality,
+        'municipalities': municipalities,
 
-        'barangay': barangay,
+        'barangays': barangays,
 
         'province': sorsogonProvince,
 
@@ -1061,10 +1374,10 @@ class _PostAnnouncementScreenState
             announcementData['postedBy'] as String?,
         coverageType:
             announcementData['coverageType'] as String,
-        municipality:
-            announcementData['municipality'] as String?,
-        barangay:
-            announcementData['barangay'] as String?,
+        municipalities:
+            announcementData['municipalities'] as List<String>,
+        barangays:
+            announcementData['barangays'] as List<String>,
         province:
             announcementData['province'] as String,
         district:
@@ -1088,6 +1401,7 @@ class _PostAnnouncementScreenState
             readingDate,
         status:
             announcementData['status'] as String,
+        image: _pickedImage,
       );
 
       // ========================================================
@@ -1098,12 +1412,14 @@ class _PostAnnouncementScreenState
       _contentController.clear();
 
       setState(() {
+        _pickedImage = null;
+        _pickedImageBytes = null;
         _selectedType = 'advisory';
 
         _coverageType = 'all';
 
-        _selectedMunicipality = null;
-        _selectedBarangay = null;
+        _selectedMunicipalities = [];
+        _selectedBarangays = [];
 
         _selectedStartDate =
             DateTime.now();
@@ -1349,6 +1665,14 @@ class _PostAnnouncementScreenState
                   return null;
                 },
               ),
+
+              const SizedBox(height: 28),
+
+              // ==================================================
+              // PHOTO
+              // ==================================================
+
+              _buildPhotoSection(),
 
               const SizedBox(height: 28),
 

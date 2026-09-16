@@ -2,6 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import 'package:soreconnect/widgets/image_viewer.dart';
+
+// Normalizes a Firestore field that may be a List (current format)
+// or a single String (legacy announcements) into a clean list.
+List<String> _toStringList(dynamic value) {
+  if (value == null) return [];
+
+  if (value is List) {
+    return value
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  final single = value.toString().trim();
+
+  return single.isEmpty ? [] : [single];
+}
+
 class ViewAnnouncementsScreen extends StatefulWidget {
   const ViewAnnouncementsScreen({super.key});
 
@@ -17,6 +36,20 @@ class _ViewAnnouncementsScreenState
   // ============================================================
 
   String _sortOption = 'Newest';
+
+  // ============================================================
+  // SEARCH
+  // ============================================================
+
+  final TextEditingController _searchController =
+      TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // ============================================================
   // GET DATE
@@ -221,6 +254,33 @@ class _ViewAnnouncementsScreenState
   }
 
   // ============================================================
+  // SEARCH FILTER
+  // Matches the query against every piece of announcement info:
+  // title, content, type, covered area, municipality, and barangay.
+  // ============================================================
+
+  bool _matchesSearch(Map<String, dynamic> data) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    final searchable = [
+      data['title'],
+      data['content'],
+      _getTypeLabel(data),
+      data['coveredArea'],
+      ..._toStringList(
+        data['municipalities'] ?? data['municipality'],
+      ),
+      ..._toStringList(
+        data['barangays'] ?? data['barangay'],
+      ),
+    ].map((v) => (v ?? '').toString().toLowerCase()).join(' ');
+
+    return searchable.contains(query);
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
@@ -251,7 +311,50 @@ class _ViewAnnouncementsScreenState
               16,
               8,
             ),
-            child: Row(
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText:
+                        "Search title, content, type, "
+                        "location...",
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: "Clear search",
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
+                Row(
               children: [
                 const Expanded(
                   child: Text(
@@ -368,6 +471,8 @@ class _ViewAnnouncementsScreenState
                 ),
               ],
             ),
+              ],
+            ),
           ),
 
           // ======================================================
@@ -457,13 +562,49 @@ class _ViewAnnouncementsScreenState
                 }
 
                 // ==================================================
-                // SORT
+                // SORT + SEARCH
                 // ==================================================
 
-                final docs =
+                final sortedDocs =
                     _sortAnnouncements(
                   snapshot.data!.docs,
                 );
+
+                final docs = sortedDocs.where((doc) {
+                  return _matchesSearch(
+                    doc.data() as Map<String, dynamic>,
+                  );
+                }).toList();
+
+                if (docs.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.search_off,
+                            size: 50,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'No announcements match '
+                            '"${_searchQuery.trim()}". '
+                            'Try a different keyword.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
 
                 // ==================================================
                 // LIST
@@ -493,6 +634,11 @@ class _ViewAnnouncementsScreenState
 
                     final content =
                         (data['content'] ??
+                                '')
+                            .toString();
+
+                    final imageBase64 =
+                        (data['imageBase64'] ??
                                 '')
                             .toString();
 
@@ -697,6 +843,19 @@ class _ViewAnnouncementsScreenState
                                   fontSize: 14,
                                 ),
                               ),
+
+                              if (imageBase64
+                                  .isNotEmpty) ...[
+                                AppImageThumbnail(
+                                  imageBase64:
+                                      imageBase64,
+                                  viewerTitle:
+                                      "Announcement Photo",
+                                ),
+                                const SizedBox(
+                                  height: 12,
+                                ),
+                              ],
 
                               const SizedBox(
                                 height: 12,
@@ -1112,15 +1271,15 @@ class AnnouncementDetailsScreen
                 '')
             .toString();
 
-    final municipality =
-        (announcement['municipality'] ??
-                '')
-            .toString();
+    final municipalities = _toStringList(
+      announcement['municipalities'] ??
+          announcement['municipality'],
+    );
 
-    final barangay =
-        (announcement['barangay'] ??
-                '')
-            .toString();
+    final barangays = _toStringList(
+      announcement['barangays'] ??
+          announcement['barangay'],
+    );
 
     final coveredArea =
         (announcement['coveredArea'] ??
@@ -1174,20 +1333,24 @@ class AnnouncementDetailsScreen
           value: coverageLabel,
         ),
 
-        if (municipality.isNotEmpty)
+        if (municipalities.isNotEmpty)
           _buildDetailItem(
             context: context,
             icon: Icons.location_city,
-            label: 'Municipality',
-            value: municipality,
+            label: municipalities.length > 1
+                ? 'Municipalities'
+                : 'Municipality',
+            value: municipalities.join(', '),
           ),
 
-        if (barangay.isNotEmpty)
+        if (barangays.isNotEmpty)
           _buildDetailItem(
             context: context,
             icon: Icons.home_work_outlined,
-            label: 'Barangay',
-            value: barangay,
+            label: barangays.length > 1
+                ? 'Barangays'
+                : 'Barangay',
+            value: barangays.join(', '),
           ),
 
         if (coveredArea.isNotEmpty)
@@ -1694,6 +1857,30 @@ class AnnouncementDetailsScreen
             const SizedBox(
               height: 25,
             ),
+
+            // ==================================================
+            // PHOTO
+            // ==================================================
+
+            if ((announcement['imageBase64'] ?? '')
+                .toString()
+                .isNotEmpty) ...[
+              const Text(
+                'Photo',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              AppImageThumbnail(
+                imageBase64:
+                    announcement['imageBase64'].toString(),
+                height: 220,
+                viewerTitle: "Announcement Photo",
+              ),
+              const SizedBox(height: 25),
+            ],
 
             // ==================================================
             // LOCATION SUMMARY

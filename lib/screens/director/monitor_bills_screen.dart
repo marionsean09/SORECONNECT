@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/models/bill_model.dart';
+import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class MonitorBillsScreen extends StatefulWidget {
   const MonitorBillsScreen({super.key});
@@ -29,6 +31,20 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
 
   String _selectedMunicipality = 'All Municipalities';
   String _selectedBarangay = 'All Barangays';
+
+  // ============================================================
+  // SEARCH
+  // ============================================================
+
+  final TextEditingController _searchController =
+      TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // ============================================================
   // LOCATION CACHE
@@ -362,13 +378,20 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   // PAYMENT STATUS
   // ============================================================
 
-  bool _isPaid(Map<String, dynamic> data) {
-    final status = (data['status'] ?? 'unpaid')
+  String _normalizedStatus(Map<String, dynamic> data) {
+    return (data['status'] ?? 'unpaid')
         .toString()
         .trim()
         .toLowerCase();
+  }
 
-    return status == 'paid';
+  bool _isPaid(Map<String, dynamic> data) {
+    return _normalizedStatus(data) == 'paid';
+  }
+
+  bool _isCancelled(Map<String, dynamic> data) {
+    final status = _normalizedStatus(data);
+    return status == 'cancelled' || status == 'canceled';
   }
 
   // ============================================================
@@ -411,6 +434,32 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   // FILTER BILLS
   // ============================================================
 
+  // ============================================================
+  // SEARCH FILTER
+  // ============================================================
+
+  bool _matchesSearch(
+    Map<String, dynamic> data,
+    Map<String, dynamic> location,
+  ) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    final searchable = [
+      data['consumerName'],
+      _getAccountNumber(data),
+      data['billingPeriod'],
+      data['status'],
+      data['generatedBy'],
+      location['municipality'],
+      location['barangay'],
+      location['address'],
+    ].map((v) => (v ?? '').toString().toLowerCase()).join(' ');
+
+    return searchable.contains(query);
+  }
+
   List<QueryDocumentSnapshot> _filterBills(
     List<QueryDocumentSnapshot> docs,
     Map<String, Map<String, dynamic>> locations,
@@ -430,7 +479,12 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
         return false;
       }
 
-      if (_paymentFilter == 'Unpaid' && _isPaid(data)) {
+      if (_paymentFilter == 'Unpaid' &&
+          (_isPaid(data) || _isCancelled(data))) {
+        return false;
+      }
+
+      if (_paymentFilter == 'Cancelled' && !_isCancelled(data)) {
         return false;
       }
 
@@ -439,6 +493,12 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
       final location = locations[doc.id] ?? {};
 
       if (!_matchesLocation(location)) {
+        return false;
+      }
+
+      // SEARCH FILTER
+
+      if (!_matchesSearch(data, location)) {
         return false;
       }
 
@@ -491,7 +551,9 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   // ============================================================
 
   String _getPaymentStatus(Map<String, dynamic> data) {
-    return _isPaid(data) ? 'PAID' : 'UNPAID';
+    if (_isPaid(data)) return 'PAID';
+    if (_isCancelled(data)) return 'CANCELLED';
+    return 'UNPAID';
   }
 
   // ============================================================
@@ -539,6 +601,47 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
             ),
             child: Column(
               children: [
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText:
+                        "Search consumer, account #, billing "
+                        "period, location...",
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: "Clear search",
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
                 Row(
                   children: [
                     const Expanded(
@@ -693,6 +796,21 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                   ),
                                   SizedBox(width: 7),
                                   Text('Unpaid'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Cancelled',
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.cancel,
+                                    size: 18,
+                                    color: Colors.grey,
+                                  ),
+                                  SizedBox(width: 7),
+                                  Text('Cancelled'),
                                 ],
                               ),
                             ),
@@ -939,7 +1057,12 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                     if (bills.isEmpty) {
                       String message = 'No bills found';
 
-                      if (_selectedBarangay != 'All Barangays') {
+                      if (_searchQuery.trim().isNotEmpty) {
+                        message =
+                            'No bills match '
+                            '"${_searchQuery.trim()}". '
+                            'Try a different keyword.';
+                      } else if (_selectedBarangay != 'All Barangays') {
                         message =
                             'No bills found for $_selectedBarangay, '
                             '$_selectedMunicipality';
@@ -975,11 +1098,23 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                         final data =
                             billDoc.data() as Map<String, dynamic>;
 
+                        final ticketNumber = BillModel.ticketNumberFor(
+                          data,
+                          billDoc.id,
+                        );
+
                         // PAYMENT
 
                         final isPaid = _isPaid(data);
+                        final isCancelled = _isCancelled(data);
 
                         final statusText = _getPaymentStatus(data);
+
+                        final statusColor = isPaid
+                            ? Colors.green
+                            : isCancelled
+                                ? Colors.grey
+                                : Colors.red;
 
                         // AMOUNT
 
@@ -1034,10 +1169,10 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                   child: Icon(
                                     isPaid
                                         ? Icons.check_circle
-                                        : Icons.pending,
-                                    color: isPaid
-                                        ? Colors.green
-                                        : Colors.orange,
+                                        : isCancelled
+                                            ? Icons.cancel
+                                            : Icons.pending,
+                                    color: statusColor,
                                     size: 32,
                                   ),
                                 ),
@@ -1051,6 +1186,15 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      if (ticketNumber.isNotEmpty) ...[
+                                        TicketBadge(
+                                          ticketNumber: ticketNumber,
+                                          color: Theme.of(
+                                            context,
+                                          ).primaryColor,
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
                                       Text(
                                         data['consumerName'] ?? 'Unknown',
                                         maxLines: 1,
@@ -1201,9 +1345,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: isPaid
-                                              ? Colors.green
-                                              : Colors.red,
+                                          color: statusColor,
                                           borderRadius:
                                               BorderRadius.circular(5),
                                         ),

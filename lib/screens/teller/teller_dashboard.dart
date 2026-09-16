@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/screens/teller/generate_reports_screen.dart';
-import 'package:soreconnect/screens/teller/verify_meter_readings_screen.dart';
+import 'package:soreconnect/screens/teller/manage_bills_screen.dart';
 import 'package:soreconnect/screens/complaints/manage_complaints_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
 
@@ -377,7 +377,7 @@ class _TellerDashboardState extends State<TellerDashboard> {
                           const SizedBox(height: 4),
 
                           const Text(
-                            'Verify readings, generate bills, and support service requests.',
+                            'Manage bill status, generate reports, and support service requests.',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey,
@@ -951,7 +951,7 @@ class _TellerDashboardState extends State<TellerDashboard> {
         onTap: (index) {
           final destinations = [
             const TellerDashboard(),
-            const VerifyMeterReadingsScreen(),
+            const ManageBillsScreen(),
             const GenerateReportScreen(),
             const ManageComplaintsScreen(),
           ];
@@ -974,8 +974,8 @@ class _TellerDashboardState extends State<TellerDashboard> {
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(Icons.verified),
-            label: 'Verify',
+            icon: Icon(Icons.receipt_long),
+            label: 'Bills',
           ),
 
           BottomNavigationBarItem(

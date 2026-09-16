@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:soreconnect/services/complaint_services.dart';
-import 'package:soreconnect/widgets/complaint_image_viewer.dart';
+import 'package:soreconnect/widgets/image_viewer.dart';
 import 'package:soreconnect/widgets/complaint_reply_thread.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
@@ -915,8 +915,9 @@ class _SubmitComplaintScreenState
                                   const SizedBox(
                                     height: 12,
                                   ),
-                                  ComplaintImageThumbnail(
+                                  AppImageThumbnail(
                                     imageBase64: imageBase64,
+                                    viewerTitle: "Complaint Photo",
                                   ),
                                 ],
 

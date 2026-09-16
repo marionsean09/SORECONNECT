@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 
 import 'package:soreconnect/screens/consumer/consumer_bill_screen.dart';
-import 'package:soreconnect/screens/consumer/consumer_report_screen.dart';
 import 'package:soreconnect/screens/complaints/submit_complaint_screen.dart';
 import 'package:soreconnect/screens/announcements/view_announcements_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
@@ -2261,17 +2260,11 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
 
             case 2:
               _openScreen(
-                const ConsumerReportScreen(),
-              );
-              break;
-
-            case 3:
-              _openScreen(
                 const SubmitComplaintScreen(),
               );
               break;
 
-            case 4:
+            case 3:
               _openScreen(
                 const ViewAnnouncementsScreen(),
               );
@@ -2294,15 +2287,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
               Icons.receipt_long,
             ),
             label: 'Bills',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.pie_chart_outline,
-            ),
-            activeIcon: Icon(
-              Icons.pie_chart,
-            ),
-            label: 'Reports',
           ),
           BottomNavigationBarItem(
             icon: Icon(

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/services/complaint_services.dart';
+import 'package:soreconnect/widgets/complaint_image_viewer.dart';
+import 'package:soreconnect/widgets/complaint_reply_thread.dart';
+import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class ManageComplaintsScreen extends StatefulWidget {
   const ManageComplaintsScreen({super.key});
@@ -33,11 +37,21 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   String _barangayFilter = 'All Barangays';
   String _sortOption = 'Newest';
 
+  final TextEditingController _searchController =
+      TextEditingController();
+  String _searchQuery = '';
+
   // ============================================================
   // LOCATION CACHE
   // ============================================================
 
   final Map<String, Map<String, dynamic>> _locationCache = {};
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // ============================================================
   // SAFE STRING
@@ -204,19 +218,13 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   }
 
   // ============================================================
-  // RESPONSE
+  // IMAGE
   // ============================================================
 
-  String _getResponse(
+  String _getImageBase64(
     Map<String, dynamic> data,
   ) {
-    final value =
-        data['response'] ??
-        data['reply'] ??
-        data['remarks'] ??
-        data['comment'];
-
-    return _cleanString(value);
+    return _cleanString(data['imageBase64']);
   }
 
   // ============================================================
@@ -249,6 +257,10 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
       case 'completed':
         return 'Resolved';
 
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
+
       default:
         return status;
     }
@@ -269,6 +281,10 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
 
       case 'in progress':
         return Colors.blue;
+
+      case 'cancelled':
+      case 'canceled':
+        return Colors.grey;
 
       case 'pending':
       default:
@@ -291,6 +307,10 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
 
       case 'in progress':
         return Icons.pending_actions;
+
+      case 'cancelled':
+      case 'canceled':
+        return Icons.cancel;
 
       case 'pending':
       default:
@@ -627,6 +647,39 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   }
 
   // ============================================================
+  // SEARCH FILTER
+  // Matches the query against every piece of complaint info:
+  // ticket number, subject, type, description, status, consumer
+  // details, and the direct location fields on the complaint.
+  // ============================================================
+
+  bool _matchesSearch(
+    Map<String, dynamic> data,
+  ) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    final location = _getDirectLocation(data);
+
+    final searchable = [
+      data['ticketNumber'],
+      _getSubject(data),
+      _getConsumerName(data),
+      _getAccountNumber(data),
+      _getComplaintType(data),
+      _getDescription(data),
+      _normalizeStatus(data['status']),
+      location['barangay'],
+      location['municipality'],
+      location['province'],
+      location['address'],
+    ].map((v) => (v ?? '').toString().toLowerCase()).join(' ');
+
+    return searchable.contains(query);
+  }
+
+  // ============================================================
   // LOCATION FILTER
   // ============================================================
 
@@ -706,7 +759,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
           doc.data()
               as Map<String, dynamic>;
 
-      return !_matchesStatus(data);
+      return !_matchesStatus(data) || !_matchesSearch(data);
     });
 
     result.sort((a, b) {
@@ -1022,20 +1075,16 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   }
 
   // ============================================================
-  // RESPONSE DIALOG
+  // STATUS DIALOG
+  // Replies now live in the shared conversation thread on the
+  // card itself; this dialog only changes the complaint status.
   // ============================================================
 
-  Future<void> _showResponseDialog(
+  Future<void> _showStatusDialog(
     BuildContext screenContext,
     String complaintId,
     String currentStatus,
-    String currentResponse,
   ) async {
-    final responseController =
-        TextEditingController(
-      text: currentResponse,
-    );
-
     const statuses = [
       'Pending',
       'In Progress',
@@ -1049,278 +1098,159 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
 
     bool saving = false;
 
-    try {
-      await showDialog<void>(
-        context: screenContext,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (
-              dialogContext,
-              setDialogState,
-            ) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(16),
-                ),
+    await showDialog<void>(
+      context: screenContext,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (
+            dialogContext,
+            setDialogState,
+          ) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(16),
+              ),
 
-                title: const Text(
-                  'Respond to Complaint',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
+              title: const Text(
+                'Update Complaint Status',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              content: DropdownButtonFormField<String>(
+                initialValue: selectedStatus,
+                decoration: InputDecoration(
+                  labelText: 'Complaint Status',
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(10),
                   ),
                 ),
+                items: statuses.map((status) {
+                  return DropdownMenuItem<String>(
+                    value: status,
+                    child: Text(status),
+                  );
+                }).toList(),
+                onChanged: saving
+                    ? null
+                    : (value) {
+                        if (value == null) return;
 
-                content:
-                    SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      TextField(
-                        controller:
-                            responseController,
-                        maxLines: 6,
-                        enabled: !saving,
-                        decoration:
-                            InputDecoration(
-                          labelText:
-                              'Response / Comment',
-                          hintText:
-                              'Enter your response to the consumer...',
-                          border:
-                              OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              10,
-                            ),
+                        setDialogState(() {
+                          selectedStatus = value;
+                        });
+                      },
+              ),
+
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          if (Navigator.of(
+                            dialogContext,
+                          ).canPop()) {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop();
+                          }
+                        },
+                  child: const Text('Cancel'),
+                ),
+
+                ElevatedButton.icon(
+                  icon: saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
-                          alignLabelWithHint:
-                              true,
-                        ),
-                      ),
+                        )
+                      : const Icon(Icons.save),
 
-                      const SizedBox(
-                        height: 18,
-                      ),
+                  label: Text(
+                    saving ? 'Saving...' : 'Save',
+                  ),
 
-                      DropdownButtonFormField<
-                          String>(
-                        initialValue:
-                            selectedStatus,
-                        decoration:
-                            InputDecoration(
-                          labelText:
-                              'Complaint Status',
-                          border:
-                              OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              10,
-                            ),
-                          ),
-                        ),
-                        items:
-                            statuses.map(
-                          (status) {
-                            return DropdownMenuItem<
-                                String>(
-                              value: status,
-                              child:
-                                  Text(status),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryOrange,
+                    foregroundColor: Colors.white,
+                  ),
+
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            saving = true;
+                          });
+
+                          try {
+                            await _complaintService
+                                .updateComplaintStatus(
+                              complaintId: complaintId,
+                              status: selectedStatus,
                             );
-                          },
-                        ).toList(),
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value ==
-                                    null) {
-                                  return;
-                                }
 
-                                setDialogState(
-                                  () {
-                                    selectedStatus =
-                                        value;
-                                  },
-                                );
-                              },
-                      ),
-                    ],
-                  ),
-                ),
+                            if (!dialogContext.mounted) {
+                              return;
+                            }
 
-                actions: [
-                  TextButton(
-                    onPressed: saving
-                        ? null
-                        : () {
-                            if (Navigator
-                                .of(
+                            if (Navigator.of(
                               dialogContext,
                             ).canPop()) {
                               Navigator.of(
                                 dialogContext,
                               ).pop();
                             }
-                          },
-                    child:
-                        const Text('Cancel'),
-                  ),
 
-                  ElevatedButton.icon(
-                    icon: saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.save,
-                          ),
-
-                    label: Text(
-                      saving
-                          ? 'Saving...'
-                          : 'Save Response',
-                    ),
-
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          primaryOrange,
-                      foregroundColor:
-                          Colors.white,
-                    ),
-
-                    onPressed: saving
-                        ? null
-                        : () async {
-                            final response =
-                                responseController
-                                    .text
-                                    .trim();
-
-                            if (response
-                                .isEmpty) {
-                              if (!dialogContext
-                                  .mounted) {
-                                return;
-                              }
-
-                              ScaffoldMessenger
-                                  .of(
-                                dialogContext,
+                            if (screenContext.mounted) {
+                              ScaffoldMessenger.of(
+                                screenContext,
                               ).showSnackBar(
                                 const SnackBar(
-                                  content:
-                                      Text(
-                                    'Please enter a response.',
+                                  backgroundColor:
+                                      Colors.green,
+                                  content: Text(
+                                    'Complaint status updated.',
                                   ),
                                 ),
                               );
-
+                            }
+                          } catch (e) {
+                            if (!dialogContext.mounted) {
                               return;
                             }
 
-                            setDialogState(
-                              () {
-                                saving = true;
-                              },
-                            );
+                            setDialogState(() {
+                              saving = false;
+                            });
 
-                            try {
-                              // ==================================================
-                              // UPDATED:
-                              // USE COMPLAINT SERVICE
-                              // ==================================================
-
-                              await _complaintService
-                                  .updateComplaintStatus(
-                                complaintId:
-                                    complaintId,
-                                status:
-                                    selectedStatus,
-                                response:
-                                    response,
-                              );
-
-                              if (!dialogContext
-                                  .mounted) {
-                                return;
-                              }
-
-                              if (Navigator
-                                  .of(
-                                dialogContext,
-                              ).canPop()) {
-                                Navigator.of(
-                                  dialogContext,
-                                ).pop();
-                              }
-
-                              if (screenContext
-                                  .mounted) {
-                                ScaffoldMessenger
-                                    .of(
-                                  screenContext,
-                                ).showSnackBar(
-                                  const SnackBar(
-                                    backgroundColor:
-                                        Colors.green,
-                                    content:
-                                        Text(
-                                      'Complaint updated successfully.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (!dialogContext
-                                  .mounted) {
-                                return;
-                              }
-
-                              setDialogState(
-                                () {
-                                  saving = false;
-                                },
-                              );
-
-                              ScaffoldMessenger
-                                  .of(
-                                dialogContext,
-                              ).showSnackBar(
-                                SnackBar(
-                                  backgroundColor:
-                                      Colors.red,
-                                  content: Text(
-                                    'Failed to update complaint: $e',
-                                  ),
+                            ScaffoldMessenger.of(
+                              dialogContext,
+                            ).showSnackBar(
+                              SnackBar(
+                                backgroundColor: Colors.red,
+                                content: Text(
+                                  'Failed to update status: $e',
                                 ),
-                              );
-                            }
-                          },
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      responseController.dispose();
-    }
+                              ),
+                            );
+                          }
+                        },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // ============================================================
@@ -1386,6 +1316,12 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   // ============================================================
 
   String _getEmptyMessage() {
+    if (_searchQuery.trim().isNotEmpty) {
+      return 'No complaints match '
+          '"${_searchQuery.trim()}". '
+          'Try a different keyword.';
+    }
+
     if (_municipalityFilter !=
             'All Municipalities' &&
         _barangayFilter !=
@@ -1422,6 +1358,9 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
     final subject =
         _getSubject(data);
 
+    final ticketNumber =
+        _cleanString(data['ticketNumber']);
+
     final consumerName =
         _getConsumerName(data);
 
@@ -1434,8 +1373,8 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
     final description =
         _getDescription(data);
 
-    final response =
-        _getResponse(data);
+    final imageBase64 =
+        _getImageBase64(data);
 
     final status =
         _normalizeStatus(data['status']);
@@ -1452,21 +1391,6 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
             'MMM dd, yyyy hh:mm a',
           ).format(complaintDate)
         : 'Date not available';
-
-    final respondedBy =
-        _cleanString(
-      data['respondedBy'],
-    );
-
-    final respondedDate =
-        _getDate(data['respondedAt']);
-
-    final respondedDateText =
-        respondedDate == null
-            ? ''
-            : DateFormat(
-                'MMM dd, yyyy hh:mm a',
-              ).format(respondedDate);
 
     return Container(
       margin: const EdgeInsets.only(
@@ -1496,37 +1420,42 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
               CrossAxisAlignment.start,
           children: [
             // ==================================================
-            // SUBJECT + STATUS
+            // TICKET + STATUS
             // ==================================================
 
             Row(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    subject,
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                      fontSize: 21,
-                      color: Colors.black,
-                    ),
+                if (ticketNumber.isNotEmpty)
+                  TicketBadge(
+                    ticketNumber: ticketNumber,
+                    color: primaryOrange,
                   ),
-                ),
-
-                const SizedBox(
-                  width: 10,
-                ),
-
+                const Spacer(),
                 _buildStatusBadge(
                   status,
                 ),
               ],
+            ),
+
+            const SizedBox(
+              height: 12,
+            ),
+
+            // ==================================================
+            // SUBJECT
+            // ==================================================
+
+            Text(
+              subject,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 21,
+                color: Colors.black,
+              ),
             ),
 
             const SizedBox(
@@ -1645,147 +1574,49 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
               ),
             ),
 
+            if (imageBase64.isNotEmpty) ...[
+              const SizedBox(
+                height: 14,
+              ),
+              ComplaintImageThumbnail(
+                imageBase64: imageBase64,
+              ),
+            ],
+
             const SizedBox(
               height: 20,
             ),
 
             // ==================================================
-            // TELLER REPLY
+            // REPLY THREAD
             // ==================================================
 
-            const Text(
-              'Teller Reply',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
+            ComplaintReplyThread(
+              complaintId: complaint.id,
+              currentSenderRole: 'Teller',
+              currentSenderName:
+                  FirebaseAuth.instance.currentUser?.email ??
+                      'Teller',
             ),
-
-            const SizedBox(
-              height: 8,
-            ),
-
-            if (response.isEmpty)
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      Colors.grey.shade100,
-                  borderRadius:
-                      BorderRadius.circular(
-                    10,
-                  ),
-                ),
-                child: Text(
-                  'No response yet.',
-                  style: TextStyle(
-                    color:
-                        Colors.grey.shade600,
-                    fontSize: 14,
-                  ),
-                ),
-              )
-            else
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.all(
-                  14,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      const Color(0xFFF1F8F2),
-                  borderRadius:
-                      BorderRadius.circular(
-                    10,
-                  ),
-                  border: Border.all(
-                    color:
-                        const Color(0xFFD0E5D3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      response,
-                      style:
-                          const TextStyle(
-                        fontSize: 15,
-                        height: 1.4,
-                      ),
-                    ),
-
-                    if (respondedBy
-                        .isNotEmpty)
-                      Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          top: 10,
-                        ),
-                        child: Text(
-                          'Replied by: $respondedBy',
-                          style:
-                              TextStyle(
-                            fontSize: 12,
-                            color: Colors
-                                .grey
-                                .shade600,
-                          ),
-                        ),
-                      ),
-
-                    if (respondedDateText
-                        .isNotEmpty)
-                      Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          top: 3,
-                        ),
-                        child: Text(
-                          'Responded: $respondedDateText',
-                          style:
-                              TextStyle(
-                            fontSize: 12,
-                            color: Colors
-                                .grey
-                                .shade600,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
 
             const SizedBox(
               height: 18,
             ),
 
             // ==================================================
-            // RESPOND BUTTON
+            // UPDATE STATUS BUTTON
             // ==================================================
 
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton.icon(
-                icon: Icon(
-                  response.isEmpty
-                      ? Icons.reply_outlined
-                      : Icons.edit_outlined,
+                icon: const Icon(
+                  Icons.rule_outlined,
                   size: 20,
                 ),
-                label: Text(
-                  response.isEmpty
-                      ? 'Respond to Complaint'
-                      : 'Edit Response',
+                label: const Text(
+                  'Update Status',
                 ),
                 style:
                     ElevatedButton.styleFrom(
@@ -1803,11 +1634,10 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
                   ),
                 ),
                 onPressed: () {
-                  _showResponseDialog(
+                  _showStatusDialog(
                     context,
                     complaint.id,
                     status,
-                    response,
                   );
                 },
               ),
@@ -1881,6 +1711,51 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
             ),
             child: Column(
               children: [
+                // ==================================================
+                // SEARCH
+                // ==================================================
+
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText:
+                        "Search ticket #, subject, consumer, "
+                        "account #, location...",
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: "Clear search",
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 10),
+
                 // ==================================================
                 // SORT + STATUS
                 // ==================================================
@@ -2041,6 +1916,26 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
                                 ),
                                 Text(
                                   'Resolved',
+                                ),
+                              ],
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value:
+                                'Cancelled',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.cancel,
+                                  size: 18,
+                                  color:
+                                      Colors.grey,
+                                ),
+                                SizedBox(
+                                  width: 8,
+                                ),
+                                Text(
+                                  'Cancelled',
                                 ),
                               ],
                             ),
@@ -2215,7 +2110,8 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
           // ACTIVE FILTERS
           // ======================================================
 
-          if (_statusFilter !=
+          if (_searchQuery.trim().isNotEmpty ||
+              _statusFilter !=
                   'All Statuses' ||
               _municipalityFilter !=
                   'All Municipalities' ||
@@ -2236,6 +2132,19 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
                   spacing: 6,
                   runSpacing: 4,
                   children: [
+                    if (_searchQuery.trim().isNotEmpty)
+                      Chip(
+                        avatar: const Icon(
+                          Icons.search,
+                          size: 16,
+                        ),
+                        label: Text(
+                          '"${_searchQuery.trim()}"',
+                        ),
+                        visualDensity:
+                            VisualDensity.compact,
+                      ),
+
                     if (_statusFilter !=
                         'All Statuses')
                       Chip(

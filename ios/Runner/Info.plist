@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>SORECONNECT needs camera access so you can attach a photo to your complaint.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SORECONNECT needs photo library access so you can attach a photo to your complaint.</string>
 </dict>
 </plist>

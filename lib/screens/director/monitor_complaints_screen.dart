@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/widgets/complaint_image_viewer.dart';
+import 'package:soreconnect/widgets/complaint_reply_thread.dart';
+import 'package:soreconnect/widgets/ticket_badge.dart';
 
 // ============================================================
 // MONITOR COMPLAINTS SCREEN
@@ -31,7 +34,17 @@ class _MonitorComplaintsScreenState
   String _selectedMunicipality = 'All Municipalities';
   String _selectedBarangay = 'All Barangays';
 
+  final TextEditingController _searchController =
+      TextEditingController();
+  String _searchQuery = '';
+
   final Map<String, Map<String, dynamic>> _locationCache = {};
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // Converts Firestore timestamps, DateTime values, or date strings into DateTime.
   DateTime? _getDate(dynamic value) {
@@ -429,7 +442,35 @@ class _MonitorComplaintsScreenState
         _normalizeStatus(_statusFilter);
   }
 
-  // Filters complaints based on the selected status and location.
+  // Checks whether a complaint matches the search query, across
+  // ticket number, subject, type, description, status, consumer
+  // details, and location.
+  bool _matchesSearch(
+    Map<String, dynamic> data,
+    Map<String, dynamic> location,
+  ) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    final searchable = [
+      data['ticketNumber'],
+      _stringValue(data, 'subject'),
+      _stringValue(data, 'consumerName'),
+      _getAccountNumber(data),
+      _stringValue(data, 'complaintType'),
+      _stringValue(data, 'description'),
+      _normalizeStatus(data['status']),
+      location['barangay'],
+      location['municipality'],
+      location['province'],
+      location['address'],
+    ].map((v) => (v ?? '').toString().toLowerCase()).join(' ');
+
+    return searchable.contains(query);
+  }
+
+  // Filters complaints based on the selected status, location, and search query.
   List<QueryDocumentSnapshot> _filterComplaints(
       List<QueryDocumentSnapshot> docs,
       Map<String, Map<String, dynamic>> locations) {
@@ -444,7 +485,9 @@ class _MonitorComplaintsScreenState
             'address': '',
           };
 
-      return _matchesStatus(data) && _matchesLocation(location);
+      return _matchesStatus(data) &&
+          _matchesLocation(location) &&
+          _matchesSearch(data, location);
     }).toList();
   }
 
@@ -475,49 +518,41 @@ class _MonitorComplaintsScreenState
         return Colors.green;
       case 'in progress':
         return Colors.blue;
+      case 'cancelled':
+      case 'canceled':
+        return Colors.grey;
       default:
         return Colors.orange;
     }
   }
 
-  // Converts location data into a readable text format.
-  String _locationText(Map<String, dynamic> location) {
-    final barangay = _getBarangay(location);
-    final municipality = _getMunicipality(location);
-    final province = _getProvince(location);
-    final address = _getAddress(location);
-
-    if (barangay.isNotEmpty && municipality.isNotEmpty) {
-      return '$barangay, $municipality, $province';
+  // Returns an icon based on the complaint status, so status is
+  // never conveyed by color alone.
+  IconData _getStatusIcon(String status) {
+    switch (_normalizeStatus(status)) {
+      case 'resolved':
+        return Icons.check_circle;
+      case 'in progress':
+        return Icons.autorenew;
+      case 'cancelled':
+      case 'canceled':
+        return Icons.cancel;
+      default:
+        return Icons.pending;
     }
-
-    if (municipality.isNotEmpty) {
-      return '$municipality, $province';
-    }
-
-    if (barangay.isNotEmpty) {
-      return '$barangay, $province';
-    }
-
-    if (address.isNotEmpty) return address;
-
-    return 'Location not provided';
   }
 
   // ============================================================
-  // DIRECTOR REPLY / EDIT
+  // STATUS DIALOG
+  // Replies now live in the shared conversation thread on the
+  // card itself; this dialog only changes the complaint status.
   // ============================================================
 
-  // Opens a dialog that allows the director to reply to or edit a complaint response.
-  Future<void> _showReplyDialog({
+  Future<void> _showStatusDialog({
     required BuildContext context,
     required String complaintId,
     required Map<String, dynamic> data,
   }) async {
-    final existingResponse = _stringValue(data, 'response');
-    final responseController =
-        TextEditingController(text: existingResponse);
-
     String selectedStatus =
         (data['status'] ?? 'Pending').toString().trim();
 
@@ -531,201 +566,127 @@ class _MonitorComplaintsScreenState
       selectedStatus = 'Pending';
     }
 
-    final isEditing = existingResponse.isNotEmpty;
-
-    try {
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (dialogContext, setDialogState) {
-              return AlertDialog(
-                title: Row(
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(
+                    Icons.rule_outlined,
+                    color: _primaryGreen,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Update Complaint Status'),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      isEditing ? Icons.edit : Icons.reply,
-                      color: _primaryGreen,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        isEditing
-                            ? 'Edit Director Reply'
-                            : 'Reply to Complaint',
+                    Text(
+                      'Complaint: ${_stringValue(data, 'subject').isEmpty ? 'No Subject' : _stringValue(data, 'subject')}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedStatus,
+                      decoration: const InputDecoration(
+                        labelText: 'Complaint Status',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: statuses.map((status) {
+                        return DropdownMenuItem<String>(
+                          value: status,
+                          child: Text(status),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+
+                        setDialogState(() {
+                          selectedStatus = value;
+                        });
+                      },
                     ),
                   ],
                 ),
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Complaint: ${_stringValue(data, 'subject').isEmpty ? 'No Subject' : _stringValue(data, 'subject')}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      FutureBuilder<Map<String, dynamic>>(
-                        future: _resolveLocationFromData(
-                          complaintId,
-                          data,
-                        ),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Text(
-                              'Location: Loading...',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 13,
-                              ),
-                            );
-                          }
-
-                          final location = snapshot.data ??
-                              _getDirectLocation(data);
-
-                          return Text(
-                            'Location: ${_locationText(location)}',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 13,
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedStatus,
-                        decoration: const InputDecoration(
-                          labelText: 'Complaint Status',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: statuses.map((status) {
-                          return DropdownMenuItem<String>(
-                            value: status,
-                            child: Text(status),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          if (value == null) return;
-
-                          setDialogState(() {
-                            selectedStatus = value;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: responseController,
-                        maxLines: 5,
-                        decoration: const InputDecoration(
-                          labelText: 'Director Reply',
-                          hintText:
-                              'Write your response to the consumer...',
-                          border: OutlineInputBorder(),
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                    ],
-                  ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(
+                      dialogContext,
+                      rootNavigator: true,
+                    ).pop();
+                  },
+                  child: const Text('Cancel'),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(
-                        dialogContext,
-                        rootNavigator: true,
-                      ).pop();
-                    },
-                    child: const Text('Cancel'),
-                  ),
-                  ElevatedButton.icon(
-                    icon: Icon(
-                      isEditing ? Icons.save : Icons.send,
-                    ),
-                    label: Text(
-                      isEditing ? 'Update Reply' : 'Send Reply',
-                    ),
-                    onPressed: () async {
-                      final response =
-                          responseController.text.trim();
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save'),
+                  onPressed: () async {
+                    try {
+                      final user =
+                          FirebaseAuth.instance.currentUser;
 
-                      if (response.isEmpty) {
+                      await FirebaseFirestore.instance
+                          .collection('complaints')
+                          .doc(complaintId)
+                          .update({
+                        'status': selectedStatus,
+                        'statusUpdatedAt':
+                            FieldValue.serverTimestamp(),
+                        'statusUpdatedBy':
+                            user?.email ?? 'Director',
+                      });
+
+                      if (dialogContext.mounted) {
+                        Navigator.of(
+                          dialogContext,
+                          rootNavigator: true,
+                        ).pop();
+                      }
+
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            backgroundColor: Colors.orange,
+                            backgroundColor: Colors.green,
                             content: Text(
-                              'Please enter a reply.',
+                              'Complaint status updated.',
                             ),
                           ),
                         );
-                        return;
                       }
-
-                      try {
-                        final user =
-                            FirebaseAuth.instance.currentUser;
-
-                        await FirebaseFirestore.instance
-                            .collection('complaints')
-                            .doc(complaintId)
-                            .update({
-                          'response': response,
-                          'status': selectedStatus,
-                          'respondedAt':
-                              FieldValue.serverTimestamp(),
-                          'respondedBy':
-                              user?.email ?? 'Director',
-                        });
-
-                        if (dialogContext.mounted) {
-                          Navigator.of(
-                            dialogContext,
-                            rootNavigator: true,
-                          ).pop();
-                        }
-
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: Colors.green,
-                              content: Text(
-                                isEditing
-                                    ? 'Director reply updated successfully.'
-                                    : 'Director reply sent successfully.',
-                              ),
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: Colors.red,
+                            content: Text(
+                              'Failed to update status: $e',
                             ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: Colors.red,
-                              content: Text(
-                                'Failed to save director reply: $e',
-                              ),
-                            ),
-                          );
-                        }
+                          ),
+                        );
                       }
-                    },
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      responseController.dispose();
-    }
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // Provides the shared border and background styling for filter dropdowns.
@@ -875,6 +836,21 @@ class _MonitorComplaintsScreenState
                   ),
                   SizedBox(width: 7),
                   Text('Resolved'),
+                ],
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'Cancelled',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.cancel,
+                    size: 18,
+                    color: Colors.grey,
+                  ),
+                  SizedBox(width: 7),
+                  Text('Cancelled'),
                 ],
               ),
             ),
@@ -1044,6 +1020,45 @@ class _MonitorComplaintsScreenState
             ),
             child: Column(
               children: [
+                TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText:
+                        "Search ticket #, subject, consumer, "
+                        "account #, location...",
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: "Clear search",
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                              });
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                      ),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     const Expanded(
@@ -1152,7 +1167,12 @@ class _MonitorComplaintsScreenState
                       String message =
                           'No complaints available.';
 
-                      if (_selectedBarangay !=
+                      if (_searchQuery.trim().isNotEmpty) {
+                        message =
+                            'No complaints match '
+                            '"${_searchQuery.trim()}". '
+                            'Try a different keyword.';
+                      } else if (_selectedBarangay !=
                           'All Barangays') {
                         message =
                             'No complaints found in '
@@ -1227,21 +1247,6 @@ class _MonitorComplaintsScreenState
                                     'MMM dd, yyyy hh:mm a',
                                   ).format(createdDate);
 
-                        final response =
-                            _stringValue(data, 'response');
-
-                        final respondedBy =
-                            _stringValue(data, 'respondedBy');
-
-                        final respondedDate =
-                            _getDate(data['respondedAt']);
-
-                        final respondedAtText =
-                            respondedDate == null
-                                ? ''
-                                : DateFormat(
-                                    'MMM dd, yyyy hh:mm a',
-                                  ).format(respondedDate);
 
                         return Card(
                           elevation: 3,
@@ -1256,29 +1261,26 @@ class _MonitorComplaintsScreenState
                               children: [
                                 Row(
                                   crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                      CrossAxisAlignment.center,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        _stringValue(
-                                                  data,
-                                                  'subject',
-                                                )
-                                                .isEmpty
-                                            ? 'No Subject'
-                                            : _stringValue(
-                                                data,
-                                                'subject',
-                                              ),
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight:
-                                              FontWeight.bold,
+                                    if (_stringValue(
+                                      data,
+                                      'ticketNumber',
+                                    ).isNotEmpty)
+                                      TicketBadge(
+                                        ticketNumber: _stringValue(
+                                          data,
+                                          'ticketNumber',
                                         ),
+                                        color: _primaryGreen,
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
+                                    const Spacer(),
                                     Chip(
+                                      avatar: Icon(
+                                        _getStatusIcon(status),
+                                        color: statusColor,
+                                        size: 16,
+                                      ),
                                       label: Text(status),
                                       backgroundColor:
                                           statusColor.withValues(
@@ -1290,8 +1292,28 @@ class _MonitorComplaintsScreenState
                                             FontWeight.bold,
                                         fontSize: 12,
                                       ),
+                                      side: BorderSide.none,
                                     ),
                                   ],
+                                ),
+
+                                const SizedBox(height: 10),
+
+                                Text(
+                                  _stringValue(
+                                            data,
+                                            'subject',
+                                          )
+                                          .isEmpty
+                                      ? 'No Subject'
+                                      : _stringValue(
+                                          data,
+                                          'subject',
+                                        ),
+                                  style: const TextStyle(
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
@@ -1425,85 +1447,43 @@ class _MonitorComplaintsScreenState
                                         ),
                                 ),
 
+                                if (_stringValue(
+                                  data,
+                                  'imageBase64',
+                                ).isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  ComplaintImageThumbnail(
+                                    imageBase64: _stringValue(
+                                      data,
+                                      'imageBase64',
+                                    ),
+                                  ),
+                                ],
+
                                 const SizedBox(height: 15),
 
-                                const Text(
-                                  'Director Reply',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                ComplaintReplyThread(
+                                  complaintId: complaintDoc.id,
+                                  currentSenderRole: 'Director',
+                                  currentSenderName:
+                                      FirebaseAuth.instance
+                                              .currentUser?.email ??
+                                          'Director',
                                 ),
-                                const SizedBox(height: 5),
-
-                                if (response.isEmpty)
-                                  const Text(
-                                    'No response yet.',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                    ),
-                                  )
-                                else
-                                  Container(
-                                    width: double.infinity,
-                                    padding:
-                                        const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green
-                                          .withValues(alpha: 0.08),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(response),
-                                        if (respondedBy.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Replied by Director: '
-                                            '$respondedBy',
-                                            style:
-                                                const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ],
-                                        if (respondedAtText
-                                            .isNotEmpty) ...[
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            'Responded: '
-                                            '$respondedAtText',
-                                            style:
-                                                const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
 
                                 const SizedBox(height: 15),
 
                                 SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton.icon(
-                                    icon: Icon(
-                                      response.isEmpty
-                                          ? Icons.reply
-                                          : Icons.edit,
+                                    icon: const Icon(
+                                      Icons.rule_outlined,
                                     ),
-                                    label: Text(
-                                      response.isEmpty
-                                          ? 'Reply to Complaint'
-                                          : 'Edit Director Reply',
+                                    label: const Text(
+                                      'Update Status',
                                     ),
                                     onPressed: () {
-                                      _showReplyDialog(
+                                      _showStatusDialog(
                                         context: context,
                                         complaintId:
                                             complaintDoc.id,

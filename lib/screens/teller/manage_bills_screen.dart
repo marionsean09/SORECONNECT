@@ -7,6 +7,7 @@ import 'package:soreconnect/utils/bill_calculator.dart';
 import 'package:soreconnect/utils/page_transitions.dart';
 import 'package:soreconnect/widgets/bill_breakdown_view.dart';
 import 'package:soreconnect/widgets/export_bill_sheet.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 // ============================================================
@@ -486,33 +487,26 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
     required ValueChanged<String> onChanged,
   }) {
     return Container(
-      height: 48,
+      height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
           isDense: true,
-          icon: const Icon(
-            Icons.keyboard_arrow_down,
-            size: 22,
-            color: Colors.grey,
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 18,
+            color: Colors.grey.shade600,
           ),
-          style: const TextStyle(
-            color: Colors.black87,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+          style: TextStyle(
+            color: Colors.grey.shade800,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
           ),
           items: items.map((item) {
             return DropdownMenuItem(
@@ -545,23 +539,11 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
     required ValueChanged<String> onChanged,
   }) {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: enabled ? Colors.white : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: enabled
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ]
-            : null,
-        border: enabled
-            ? null
-            : Border.all(color: Colors.grey.shade300),
+        color: enabled ? Colors.grey.shade100 : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -571,16 +553,17 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
             children: [
               Icon(
                 icon,
-                size: 22,
-                color: enabled ? Colors.orange : Colors.grey,
+                size: 18,
+                color: enabled ? Colors.grey.shade600 : Colors.grey.shade400,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   hint,
                   style: TextStyle(
-                    fontSize: 16,
-                    color: enabled ? Colors.black87 : Colors.grey,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: enabled ? Colors.grey.shade800 : Colors.grey,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -630,64 +613,16 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: TextField(
+          MinimalSearchField(
             controller: _searchController,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText:
-                  "Search consumer, account #, billing period, "
-                  "location...",
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: "Clear search",
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _searchQuery = '';
-                        });
-                      },
-                    ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                vertical: 12,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: primaryOrange,
-                  width: 1.5,
-                ),
-              ),
-            ),
+            hintText:
+                "Search consumer, account #, billing period, "
+                "location...",
             onChanged: (value) {
               setState(() {
                 _searchQuery = value;
               });
             },
-          ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -724,22 +659,15 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
               ),
               const SizedBox(width: 8),
               Container(
-                height: 48,
-                width: 48,
+                height: 44,
+                width: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: PopupMenuButton<String>(
                   tooltip: 'Sort',
-                  icon: const Icon(Icons.sort, color: Colors.orange),
+                  icon: Icon(Icons.sort, color: Colors.grey.shade600),
                   onSelected: (value) {
                     setState(() {
                       _sortOption = value;

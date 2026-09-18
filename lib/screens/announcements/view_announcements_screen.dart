@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:soreconnect/screens/announcements/post_announcement_screen.dart';
 import 'package:soreconnect/widgets/image_viewer.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 
 // Normalizes a Firestore field that may be a List (current format)
 // or a single String (legacy announcements) into a clean list.
@@ -315,38 +316,11 @@ class _ViewAnnouncementsScreenState
             ),
             child: Column(
               children: [
-                TextField(
+                MinimalSearchField(
                   controller: _searchController,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText:
-                        "Search title, content, type, "
-                        "location...",
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: "Clear search",
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                  ),
+                  hintText:
+                      "Search title, content, type, "
+                      "location...",
                   onChanged: (value) {
                     setState(() {
                       _searchQuery = value;
@@ -381,11 +355,7 @@ class _ViewAnnouncementsScreenState
                         Colors.grey.shade100,
                     borderRadius:
                         BorderRadius.circular(
-                      10,
-                    ),
-                    border: Border.all(
-                      color:
-                          Colors.grey.shade300,
+                      12,
                     ),
                   ),
                   child:

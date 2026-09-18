@@ -9,6 +9,7 @@ import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/utils/bill_calculator.dart';
 import 'package:soreconnect/utils/page_transitions.dart';
 import 'package:soreconnect/widgets/bill_breakdown_view.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 
 class MeterReaderDashboard extends StatefulWidget {
   const MeterReaderDashboard({super.key});
@@ -42,6 +43,19 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   final Map<String, Map<String, dynamic>> _locationCache = {};
 
   // ------------------------------------------------------------
+  // READINGS STREAM
+  //
+  // Created once (not inline in build()) so typing in the search
+  // field — which calls setState() on every keystroke — doesn't
+  // make StreamBuilder see a "new" stream, resubscribe, and briefly
+  // replace this whole subtree (including the search field) with a
+  // loading spinner. That was disposing the TextField's Element on
+  // every keystroke, dropping focus/cursor/keyboard mid-word.
+  // ------------------------------------------------------------
+
+  late final Stream<QuerySnapshot> _readingsStream;
+
+  // ------------------------------------------------------------
   // ENTRANCE ANIMATION
   // ------------------------------------------------------------
 
@@ -54,6 +68,13 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   @override
   void initState() {
     super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    _readingsStream = FirebaseFirestore.instance
+        .collection('meter_readings')
+        .where('recordedBy', isEqualTo: user?.email)
+        .snapshots();
 
     _entranceController = AnimationController(
       vsync: this,
@@ -546,25 +567,15 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   }) {
     return Container(
       width: double.infinity,
-      height: 64,
+      height: 46,
       decoration: BoxDecoration(
         color: enabled
-            ? Colors.white
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade300,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.025),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
+            ? Colors.grey.shade100
+            : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.symmetric(
-        horizontal: 18,
+        horizontal: 14,
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -575,16 +586,17 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
           icon: Icon(
             Icons.keyboard_arrow_down_rounded,
             color: enabled
-                ? Colors.grey.shade500
+                ? Colors.grey.shade600
                 : Colors.grey.shade400,
-            size: 28,
+            size: 20,
           ),
           dropdownColor: Colors.white,
           borderRadius: BorderRadius.circular(14),
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
             color: enabled
-                ? Colors.black87
+                ? Colors.grey.shade800
                 : Colors.grey.shade500,
           ),
           onChanged: enabled ? onChanged : null,
@@ -600,14 +612,14 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                   children: [
                     Icon(
                       icon,
-                      size: 23,
+                      size: 17,
                       color: enabled
                           ? (isDefault
                               ? Colors.orange
                               : Colors.grey.shade500)
                           : Colors.grey.shade400,
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         item == 'All Barangays' &&
@@ -616,13 +628,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                             ? 'Select Municipality First'
                             : item,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: enabled
-                              ? (isDefault
-                                  ? Colors.black87
-                                  : Colors.black87)
-                              : Colors.grey.shade500,
+                        style: const TextStyle(
+                          fontSize: 14,
                         ),
                       ),
                     ),
@@ -1039,9 +1046,6 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
   @override
   Widget build(BuildContext context) {
-    final user =
-        FirebaseAuth.instance.currentUser;
-
     return Scaffold(
       backgroundColor:
           const Color(0xFFFFF9ED),
@@ -1090,13 +1094,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
       body: SafeArea(
         child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('meter_readings')
-              .where(
-                'recordedBy',
-                isEqualTo: user?.email,
-              )
-              .snapshots(),
+          stream: _readingsStream,
 
           builder: (context, snapshot) {
             if (snapshot.connectionState ==
@@ -1505,35 +1503,10 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                   // SEARCH
                   // ============================================
 
-                  TextField(
+                  MinimalSearchField(
                     controller: _searchController,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText:
-                          "Search consumer, account #, billing period...",
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.close),
-                              tooltip: "Clear search",
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                });
-                              },
-                            ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
+                    hintText:
+                        "Search consumer, account #, billing period...",
                     onChanged: (value) {
                       setState(() {
                         _searchQuery = value;
@@ -1564,82 +1537,30 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                         ),
                       ),
 
-                      Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 10,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(
-                            color: Colors
-                                .grey
-                                .shade300,
-                          ),
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            10,
-                          ),
-                        ),
-                        child:
-                            DropdownButtonHideUnderline(
-                          child:
-                              DropdownButton<
-                                  String>(
-                            value: _sortBy,
-                            icon:
-                                const Icon(
-                              Icons.sort,
-                              size: 20,
-                            ),
-                            items:
-                                const [
-                              DropdownMenuItem(
-                                value:
-                                    'Newest',
-                                child:
-                                    Text(
-                                  'Newest',
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value:
-                                    'Oldest',
-                                child:
-                                    Text(
-                                  'Oldest',
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value:
-                                    'Consumer Name',
-                                child:
-                                    Text(
-                                  'Name',
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value:
-                                    'Verified',
-                                child:
-                                    Text(
-                                  'Status',
-                                ),
-                              ),
-                            ],
-                            onChanged:
-                                (value) {
-                              setState(() {
-                                _sortBy =
-                                    value ??
-                                        'Newest';
-                              });
-                            },
-                          ),
-                        ),
+                      MinimalDropdown<String>(
+                        value: _sortBy,
+                        icon: Icons.sort,
+                        items: const [
+                          'Newest',
+                          'Oldest',
+                          'Consumer Name',
+                          'Verified',
+                        ],
+                        itemLabel: (value) {
+                          switch (value) {
+                            case 'Consumer Name':
+                              return 'Name';
+                            case 'Verified':
+                              return 'Status';
+                            default:
+                              return value;
+                          }
+                        },
+                        onChanged: (value) {
+                          setState(() {
+                            _sortBy = value ?? 'Newest';
+                          });
+                        },
                       ),
                     ],
                   ),

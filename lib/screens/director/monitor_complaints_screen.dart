@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/widgets/image_viewer.dart';
 import 'package:soreconnect/widgets/complaint_reply_thread.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 // ============================================================
@@ -689,12 +690,11 @@ class _MonitorComplaintsScreenState
     );
   }
 
-  // Provides the shared border and background styling for filter dropdowns.
+  // Provides the shared background styling for filter dropdowns.
   BoxDecoration _filterDecoration() {
     return BoxDecoration(
       color: Colors.grey.shade100,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: Colors.grey.shade300),
+      borderRadius: BorderRadius.circular(12),
     );
   }
 
@@ -1020,38 +1020,11 @@ class _MonitorComplaintsScreenState
             ),
             child: Column(
               children: [
-                TextField(
+                MinimalSearchField(
                   controller: _searchController,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText:
-                        "Search ticket #, subject, consumer, "
-                        "account #, location...",
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: "Clear search",
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                  ),
+                  hintText:
+                      "Search ticket #, subject, consumer, "
+                      "account #, location...",
                   onChanged: (value) {
                     setState(() {
                       _searchQuery = value;

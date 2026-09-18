@@ -5,6 +5,7 @@ import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/models/bill_model.dart';
 import 'package:soreconnect/utils/bill_calculator.dart';
 import 'package:soreconnect/widgets/bill_breakdown_view.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class MonitorBillsScreen extends StatefulWidget {
@@ -603,38 +604,11 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
             ),
             child: Column(
               children: [
-                TextField(
+                MinimalSearchField(
                   controller: _searchController,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText:
-                        "Search consumer, account #, billing "
-                        "period, location...",
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close),
-                            tooltip: "Clear search",
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                              });
-                            },
-                          ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(
-                        color: Colors.grey.shade300,
-                      ),
-                    ),
-                  ),
+                  hintText:
+                      "Search consumer, account #, billing "
+                      "period, location...",
                   onChanged: (value) {
                     setState(() {
                       _searchQuery = value;
@@ -665,10 +639,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                        ),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
@@ -737,10 +708,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                        ),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
@@ -846,10 +814,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Colors.grey.shade300,
-                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
@@ -920,10 +885,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                   'All Municipalities'
                               ? Colors.grey.shade200
                               : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Colors.grey.shade300,
-                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(

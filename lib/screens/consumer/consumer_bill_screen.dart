@@ -6,6 +6,7 @@ import 'package:soreconnect/models/bill_model.dart';
 import 'package:soreconnect/utils/bill_calculator.dart';
 import 'package:soreconnect/widgets/bill_breakdown_view.dart';
 import 'package:soreconnect/widgets/export_bill_sheet.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class ConsumerBillScreen extends StatefulWidget {
@@ -28,6 +29,14 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
   // rather than a generic linear/ease-in-out fade.
   static const Curve _easeOut = Cubic(0.23, 1, 0.32, 1);
 
+  // Created once (not inline in build()) so typing in the search
+  // field doesn't make StreamBuilder see a "new" stream on every
+  // keystroke, resubscribe, and briefly replace this whole subtree
+  // — including the search field — with a loading spinner. That was
+  // disposing the TextField's Element on every keystroke, dropping
+  // focus/cursor/keyboard mid-word.
+  late final Stream<QuerySnapshot>? _billsStream;
+
   late final AnimationController _entranceController;
   late final Animation<double> _fadeAnimation;
   late final Animation<Offset> _slideAnimation;
@@ -35,6 +44,15 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
   @override
   void initState() {
     super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    _billsStream = user == null
+        ? null
+        : FirebaseFirestore.instance
+            .collection("bills")
+            .where("consumerId", isEqualTo: user.uid)
+            .snapshots();
 
     _entranceController = AnimationController(
       vsync: this,
@@ -142,59 +160,6 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
     return result;
   }
 
-  Widget _drop(
-    IconData icon,
-    String value,
-    List<String> items,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 19,
-            color: Theme.of(context).primaryColor,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: value,
-                isExpanded: true,
-                icon: const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                ),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade800,
-                ),
-                items: items
-                    .map(
-                      (e) => DropdownMenuItem<String>(
-                        value: e,
-                        child: Text(
-                          e,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: onChanged,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ============================================================
   // BILL DETAIL ROW (label / value pair)
@@ -277,9 +242,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
+    if (_billsStream == null) {
       return const Scaffold(
         body: Center(
           child: Text("User not logged in."),
@@ -302,13 +265,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
         foregroundColor: Colors.white,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection("bills")
-            .where(
-              "consumerId",
-              isEqualTo: user.uid,
-            )
-            .snapshots(),
+        stream: _billsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
@@ -357,60 +314,10 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                           16,
                           0,
                         ),
-                        child: TextField(
+                        child: MinimalSearchField(
                           controller: _searchController,
-                          textInputAction: TextInputAction.search,
-                          cursorColor:
-                              Theme.of(context).primaryColor,
-                          decoration: InputDecoration(
-                            hintText:
-                                "Search billing period, status, rate...",
-                            prefixIcon: Icon(
-                              Icons.search_rounded,
-                              color: Colors.grey.shade500,
-                            ),
-                            suffixIcon: _searchQuery.isEmpty
-                                ? null
-                                : IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                    ),
-                                    color: Colors.grey.shade500,
-                                    tooltip: "Clear search",
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() {
-                                        _searchQuery = '';
-                                      });
-                                    },
-                                  ),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            contentPadding:
-                                const EdgeInsets.symmetric(
-                              vertical: 14,
-                              horizontal: 16,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(16),
-                              borderSide: BorderSide(
-                                color:
-                                    Theme.of(context).primaryColor,
-                                width: 1.5,
-                              ),
-                            ),
-                          ),
+                          hintText:
+                              "Search billing period, status, rate...",
                           onChanged: (value) {
                             setState(() {
                               _searchQuery = value;
@@ -425,16 +332,17 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                         child: Row(
                           children: [
                             Expanded(
-                              child: _drop(
-                                Icons.filter_list,
-                                _selectedFilter,
-                                [
+                              child: MinimalDropdown<String>(
+                                value: _selectedFilter,
+                                icon: Icons.filter_list,
+                                items: const [
                                   'All',
                                   'Paid',
                                   'Unpaid',
                                   'Cancelled',
                                 ],
-                                (value) {
+                                itemLabel: (value) => value,
+                                onChanged: (value) {
                                   if (value != null) {
                                     setState(() {
                                       _selectedFilter = value;
@@ -447,16 +355,17 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                             const SizedBox(width: 10),
 
                             Expanded(
-                              child: _drop(
-                                Icons.sort,
-                                _selectedSort,
-                                [
+                              child: MinimalDropdown<String>(
+                                value: _selectedSort,
+                                icon: Icons.sort,
+                                items: const [
                                   'Newest',
                                   'Oldest',
                                   'Highest',
                                   'Lowest',
                                 ],
-                                (value) {
+                                itemLabel: (value) => value,
+                                onChanged: (value) {
                                   if (value != null) {
                                     setState(() {
                                       _selectedSort = value;

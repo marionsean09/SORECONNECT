@@ -1193,282 +1193,11 @@ class _MonitorComplaintsScreenState
                                   'address': '',
                                 };
 
-                        final barangay =
-                            _getBarangay(location);
-                        final municipality =
-                            _getMunicipality(location);
-                        final province =
-                            _getProvince(location);
-                        final address =
-                            _getAddress(location);
-
-                        final status =
-                            (data['status'] ?? 'Pending')
-                                .toString()
-                                .trim();
-
-                        final statusColor =
-                            _getStatusColor(status);
-
-                        final createdDate =
-                            _getComplaintDate(data);
-
-                        final dateText =
-                            createdDate.millisecondsSinceEpoch == 0
-                                ? '-'
-                                : DateFormat(
-                                    'MMM dd, yyyy hh:mm a',
-                                  ).format(createdDate);
-
-
-                        return Card(
-                          elevation: 3,
-                          margin: const EdgeInsets.only(
-                            bottom: 15,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(15),
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.center,
-                                  children: [
-                                    if (_stringValue(
-                                      data,
-                                      'ticketNumber',
-                                    ).isNotEmpty)
-                                      TicketBadge(
-                                        ticketNumber: _stringValue(
-                                          data,
-                                          'ticketNumber',
-                                        ),
-                                        color: _primaryGreen,
-                                      ),
-                                    const Spacer(),
-                                    Chip(
-                                      avatar: Icon(
-                                        _getStatusIcon(status),
-                                        color: statusColor,
-                                        size: 16,
-                                      ),
-                                      label: Text(status),
-                                      backgroundColor:
-                                          statusColor.withValues(
-                                        alpha: .15,
-                                      ),
-                                      labelStyle: TextStyle(
-                                        color: statusColor,
-                                        fontWeight:
-                                            FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                      side: BorderSide.none,
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                Text(
-                                  _stringValue(
-                                            data,
-                                            'subject',
-                                          )
-                                          .isEmpty
-                                      ? 'No Subject'
-                                      : _stringValue(
-                                          data,
-                                          'subject',
-                                        ),
-                                  style: const TextStyle(
-                                    fontSize: 19,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Consumer: '
-                                  '${_stringValue(data, 'consumerName').isEmpty ? 'Unknown' : _stringValue(data, 'consumerName')}',
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  'Account #: '
-                                  '${_getAccountNumber(data).isEmpty ? 'N/A' : _getAccountNumber(data)}',
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  'Complaint Type: '
-                                  '${_stringValue(data, 'complaintType').isEmpty ? 'N/A' : _stringValue(data, 'complaintType')}',
-                                ),
-                                const SizedBox(height: 10),
-
-                                Container(
-                                  width: double.infinity,
-                                  padding:
-                                      const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green
-                                        .withValues(alpha: 0.06),
-                                    borderRadius:
-                                        BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: _primaryGreen
-                                          .withValues(alpha: 0.25),
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Row(
-                                        children: [
-                                          Icon(
-                                            Icons.location_on,
-                                            color:
-                                                _primaryGreen,
-                                            size: 20,
-                                          ),
-                                          SizedBox(width: 7),
-                                          Text(
-                                            'Consumer Location',
-                                            style: TextStyle(
-                                              fontWeight:
-                                                  FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      if (barangay.isNotEmpty)
-                                        _locationRow(
-                                          'Barangay',
-                                          barangay,
-                                          Icons.home_outlined,
-                                        ),
-                                      if (municipality.isNotEmpty)
-                                        _locationRow(
-                                          'Municipality',
-                                          municipality,
-                                          Icons
-                                              .location_city_outlined,
-                                        ),
-                                      if (province.isNotEmpty)
-                                        _locationRow(
-                                          'Province',
-                                          province,
-                                          Icons.map_outlined,
-                                        ),
-                                      if (address.isNotEmpty)
-                                        _locationRow(
-                                          'Address',
-                                          address,
-                                          Icons.place_outlined,
-                                        ),
-                                      if (barangay.isEmpty &&
-                                          municipality.isEmpty &&
-                                          address.isEmpty)
-                                        const Padding(
-                                          padding:
-                                              EdgeInsets.only(
-                                            top: 3,
-                                          ),
-                                          child: Text(
-                                            'Location not provided',
-                                            style: TextStyle(
-                                              color: Colors.grey,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                Text(
-                                  'Date Submitted: $dateText',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
-                                ),
-
-                                const Divider(height: 24),
-
-                                const Text(
-                                  'Description',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  _stringValue(
-                                            data,
-                                            'description',
-                                          )
-                                          .isEmpty
-                                      ? 'No description provided.'
-                                      : _stringValue(
-                                          data,
-                                          'description',
-                                        ),
-                                ),
-
-                                if (_stringValue(
-                                  data,
-                                  'imageBase64',
-                                ).isNotEmpty) ...[
-                                  const SizedBox(height: 12),
-                                  AppImageThumbnail(
-                                    imageBase64: _stringValue(
-                                      data,
-                                      'imageBase64',
-                                    ),
-                                    viewerTitle: "Complaint Photo",
-                                  ),
-                                ],
-
-                                const SizedBox(height: 15),
-
-                                ComplaintReplyThread(
-                                  complaintId: complaintDoc.id,
-                                  currentSenderRole: 'Director',
-                                  currentSenderName:
-                                      FirebaseAuth.instance
-                                              .currentUser?.email ??
-                                          'Director',
-                                ),
-
-                                const SizedBox(height: 15),
-
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton.icon(
-                                    icon: const Icon(
-                                      Icons.rule_outlined,
-                                    ),
-                                    label: const Text(
-                                      'Update Status',
-                                    ),
-                                    onPressed: () {
-                                      _showStatusDialog(
-                                        context: context,
-                                        complaintId:
-                                            complaintDoc.id,
-                                        data: data,
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        return _buildComplaintTile(
+                          context,
+                          complaintDoc,
+                          data,
+                          location,
                         );
                       },
                     );
@@ -1479,6 +1208,373 @@ class _MonitorComplaintsScreenState
           ),
         ],
       ),
+    );
+  }
+
+  // ============================================================
+  // COMPLAINT TILE (compact list row)
+  // ============================================================
+
+  Widget _buildComplaintTile(
+    BuildContext context,
+    QueryDocumentSnapshot complaintDoc,
+    Map<String, dynamic> data,
+    Map<String, dynamic> location,
+  ) {
+    final status = (data['status'] ?? 'Pending').toString().trim();
+    final statusColor = _getStatusColor(status);
+    final ticketNumber = _stringValue(data, 'ticketNumber');
+
+    final subject = _stringValue(data, 'subject').isEmpty
+        ? 'No Subject'
+        : _stringValue(data, 'subject');
+
+    final consumerName = _stringValue(data, 'consumerName').isEmpty
+        ? 'Unknown'
+        : _stringValue(data, 'consumerName');
+
+    final accountNumber = _getAccountNumber(data).isEmpty
+        ? 'N/A'
+        : _getAccountNumber(data);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showComplaintDetailSheet(
+        context,
+        complaintDoc,
+        data,
+        location,
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: _primaryGreen,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$consumerName · $accountNumber',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // COMPLAINT DETAIL SHEET
+  // ============================================================
+
+  void _showComplaintDetailSheet(
+    BuildContext context,
+    QueryDocumentSnapshot complaintDoc,
+    Map<String, dynamic> data,
+    Map<String, dynamic> location,
+  ) {
+    final barangay = _getBarangay(location);
+    final municipality = _getMunicipality(location);
+    final province = _getProvince(location);
+    final address = _getAddress(location);
+
+    final status = (data['status'] ?? 'Pending').toString().trim();
+    final statusColor = _getStatusColor(status);
+
+    final createdDate = _getComplaintDate(data);
+    final dateText = createdDate.millisecondsSinceEpoch == 0
+        ? '-'
+        : DateFormat('MMM dd, yyyy hh:mm a').format(createdDate);
+
+    final ticketNumber = _stringValue(data, 'ticketNumber');
+
+    final subject = _stringValue(data, 'subject').isEmpty
+        ? 'No Subject'
+        : _stringValue(data, 'subject');
+
+    final imageBase64 = _stringValue(data, 'imageBase64');
+
+    final description = _stringValue(data, 'description').isEmpty
+        ? 'No description provided.'
+        : _stringValue(data, 'description');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetContext, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (ticketNumber.isNotEmpty)
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: _primaryGreen,
+                        ),
+                      const Spacer(),
+                      Chip(
+                        avatar: Icon(
+                          _getStatusIcon(status),
+                          color: statusColor,
+                          size: 16,
+                        ),
+                        label: Text(status),
+                        backgroundColor:
+                            statusColor.withValues(alpha: .15),
+                        labelStyle: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                        side: BorderSide.none,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    subject,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Consumer: '
+                    '${_stringValue(data, 'consumerName').isEmpty ? 'Unknown' : _stringValue(data, 'consumerName')}',
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Account #: '
+                    '${_getAccountNumber(data).isEmpty ? 'N/A' : _getAccountNumber(data)}',
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Complaint Type: '
+                    '${_stringValue(data, 'complaintType').isEmpty ? 'N/A' : _stringValue(data, 'complaintType')}',
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _primaryGreen.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              color: _primaryGreen,
+                              size: 20,
+                            ),
+                            SizedBox(width: 7),
+                            Text(
+                              'Consumer Location',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (barangay.isNotEmpty)
+                          _locationRow(
+                            'Barangay',
+                            barangay,
+                            Icons.home_outlined,
+                          ),
+                        if (municipality.isNotEmpty)
+                          _locationRow(
+                            'Municipality',
+                            municipality,
+                            Icons.location_city_outlined,
+                          ),
+                        if (province.isNotEmpty)
+                          _locationRow(
+                            'Province',
+                            province,
+                            Icons.map_outlined,
+                          ),
+                        if (address.isNotEmpty)
+                          _locationRow(
+                            'Address',
+                            address,
+                            Icons.place_outlined,
+                          ),
+                        if (barangay.isEmpty &&
+                            municipality.isEmpty &&
+                            address.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 3),
+                            child: Text(
+                              'Location not provided',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Date Submitted: $dateText',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const Divider(height: 26),
+                  const Text(
+                    'Description',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(description),
+                  if (imageBase64.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    AppImageThumbnail(
+                      imageBase64: imageBase64,
+                      viewerTitle: "Complaint Photo",
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  ComplaintReplyThread(
+                    complaintId: complaintDoc.id,
+                    currentSenderRole: 'Director',
+                    currentSenderName:
+                        FirebaseAuth.instance.currentUser?.email ??
+                            'Director',
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.rule_outlined),
+                      label: const Text('Update Status'),
+                      onPressed: () {
+                        _showStatusDialog(
+                          context: context,
+                          complaintId: complaintDoc.id,
+                          data: data,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

@@ -131,12 +131,17 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
 
         if (_isEmailChange) {
           // Keep Firestore's cached email in sync with the now
-          // up-to-date Auth email before requiring a fresh login.
+          // up-to-date Auth email before requiring a fresh login,
+          // and clear the pending-change marker so the dashboard
+          // stops reminding them to confirm it.
           await FirebaseFirestore.instance
               .collection('users')
               .doc(refreshedUser.uid)
               .set(
-            {'email': widget.pendingEmail},
+            {
+              'email': widget.pendingEmail,
+              'pendingEmail': FieldValue.delete(),
+            },
             SetOptions(merge: true),
           );
 
@@ -177,6 +182,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
         });
       }
     } catch (e) {
+      // Logged even when silent (the periodic background check) so
+      // a flaky/offline check on a real device leaves a trace instead
+      // of failing invisibly.
+      debugPrint('Verification check failed: $e');
+
       if (!silent && mounted) {
         setState(() {
           _message = 'Failed to check status: $e';
@@ -386,14 +396,14 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen>
                     Text(
                       _isEmailChange
                           ? 'Open the email and tap the link to '
-                              'switch your sign-in email. This '
-                              'page will continue automatically '
-                              'once confirmed — your current '
-                              'email still works until then.'
+                              'switch your sign-in email, then come '
+                              'back to this app — it will continue '
+                              'automatically once confirmed. Your '
+                              'current email still works until then.'
                           : 'Open the email and tap the link to '
-                              'verify your account. This page '
-                              'will continue automatically once '
-                              'verified.',
+                              'verify your account, then come back '
+                              'to this app — it will continue '
+                              'automatically once verified.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 12,

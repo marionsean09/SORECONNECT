@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -31,6 +32,9 @@ class _RegisterScreenState extends State<RegisterScreen>
       TextEditingController();
 
   final TextEditingController _accountNumberController =
+      TextEditingController();
+
+  final TextEditingController _meterNumberController =
       TextEditingController();
 
   final TextEditingController _contactNumberController =
@@ -104,6 +108,7 @@ class _RegisterScreenState extends State<RegisterScreen>
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _accountNumberController.dispose();
+    _meterNumberController.dispose();
     _contactNumberController.dispose();
     _entranceController.dispose();
 
@@ -162,9 +167,21 @@ class _RegisterScreenState extends State<RegisterScreen>
     // VALIDATE ACCOUNT NUMBER
     // ------------------------------------------------------------
 
-    if (_accountNumberController.text.trim().isEmpty) {
+    if (!RegExp(r'^\d{8}$')
+        .hasMatch(_accountNumberController.text.trim())) {
       setState(() {
-        _errorMessage = "Enter account number";
+        _errorMessage = "Account number must be exactly 8 digits";
+      });
+      return;
+    }
+
+    // ------------------------------------------------------------
+    // VALIDATE METER NUMBER
+    // ------------------------------------------------------------
+
+    if (_meterNumberController.text.trim().isEmpty) {
+      setState(() {
+        _errorMessage = "Enter meter number";
       });
       return;
     }
@@ -308,6 +325,9 @@ class _RegisterScreenState extends State<RegisterScreen>
 
         'accountNumber':
             _accountNumberController.text.trim(),
+
+        'meterNumber':
+            _meterNumberController.text.trim(),
 
         'contactNumber':
             _contactNumberController.text.trim(),
@@ -891,14 +911,42 @@ class _RegisterScreenState extends State<RegisterScreen>
                           _accountNumberController,
                       keyboardType:
                           TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(8),
+                      ],
                       cursorColor:
                           const Color(0xFFD50000),
                       decoration:
                           _inputDecoration(
                         label:
-                            "Account Number",
+                            "Account Number (8 digits)",
                         icon:
                             Icons.numbers_outlined,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 16,
+                    ),
+
+                    // ==================================================
+                    // METER NUMBER
+                    // ==================================================
+
+                    TextField(
+                      controller:
+                          _meterNumberController,
+                      keyboardType:
+                          TextInputType.text,
+                      cursorColor:
+                          const Color(0xFFD50000),
+                      decoration:
+                          _inputDecoration(
+                        label:
+                            "Meter Number",
+                        icon:
+                            Icons.speed_outlined,
                       ),
                     ),
 

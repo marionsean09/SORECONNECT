@@ -398,6 +398,380 @@ class _SubmitComplaintScreenState
     );
   }
 
+  // ============================================================
+  // COMPLAINT HISTORY TILE (compact list row)
+  // ============================================================
+
+  Widget _buildComplaintHistoryTile(
+    BuildContext context,
+    QueryDocumentSnapshot d,
+    Map<String, dynamic> data,
+  ) {
+    final status = (data['status'] ?? 'Pending').toString();
+    final statusLower = status.toLowerCase();
+
+    final isResolved = statusLower == 'resolved' ||
+        statusLower == 'closed' ||
+        statusLower == 'completed';
+
+    final isCancelled =
+        statusLower == 'cancelled' || statusLower == 'canceled';
+
+    final isInProgress = statusLower == 'in progress' ||
+        statusLower == 'in-progress' ||
+        statusLower == 'inprogress';
+
+    Color statusColor;
+
+    if (isResolved) {
+      statusColor = Colors.green;
+    } else if (isCancelled) {
+      statusColor = Colors.grey;
+    } else if (isInProgress) {
+      statusColor = Colors.blue;
+    } else if (statusLower == 'pending') {
+      statusColor = Colors.orange;
+    } else {
+      statusColor = Colors.grey;
+    }
+
+    final ticketNumber = (data['ticketNumber'] ?? '').toString();
+    final subject = (data['subject'] ?? '').toString();
+    final complaintType = (data['complaintType'] ?? '').toString();
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showComplaintHistoryDetailSheet(context, d, data),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: const Color(0xFFD32F2F),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          subject.isEmpty ? 'No Subject' : subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    complaintType.isEmpty
+                        ? 'Complaint'
+                        : complaintType,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // COMPLAINT HISTORY DETAIL SHEET
+  // ============================================================
+
+  void _showComplaintHistoryDetailSheet(
+    BuildContext context,
+    QueryDocumentSnapshot d,
+    Map<String, dynamic> data,
+  ) {
+    final status = (data['status'] ?? 'Pending').toString();
+    final isEdited = data['editedAt'] != null;
+    final ticketNumber = (data['ticketNumber'] ?? '').toString();
+    final consumerName = (data['consumerName'] ?? '').toString();
+    final subject = (data['subject'] ?? '').toString();
+    final complaintType = (data['complaintType'] ?? '').toString();
+    final description = (data['description'] ?? '').toString();
+    final imageBase64 = (data['imageBase64'] ?? '').toString();
+
+    final submitted = data['dateSubmitted'] ?? data['createdAt'];
+
+    String dateText = '';
+
+    if (submitted is Timestamp) {
+      dateText =
+          DateFormat('MMM dd, yyyy hh:mm a').format(submitted.toDate());
+    }
+
+    final statusLower = status.toLowerCase();
+
+    final isResolved = statusLower == 'resolved' ||
+        statusLower == 'closed' ||
+        statusLower == 'completed';
+
+    final isInProgress = statusLower == 'in progress' ||
+        statusLower == 'in-progress' ||
+        statusLower == 'inprogress';
+
+    final isPending = statusLower == 'pending';
+
+    final isCancelled =
+        statusLower == 'cancelled' || statusLower == 'canceled';
+
+    final canCancel = isPending || isInProgress;
+
+    Color statusColor;
+    IconData statusIcon;
+
+    if (isResolved) {
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle;
+    } else if (isCancelled) {
+      statusColor = Colors.grey;
+      statusIcon = Icons.cancel;
+    } else if (isInProgress) {
+      statusColor = Colors.blue;
+      statusIcon = Icons.autorenew;
+    } else if (isPending) {
+      statusColor = Colors.orange;
+      statusIcon = Icons.pending;
+    } else {
+      statusColor = Colors.grey;
+      statusIcon = Icons.help_outline;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetContext, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (ticketNumber.isNotEmpty)
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: const Color(0xFFD32F2F),
+                        ),
+                      const Spacer(),
+                      Text(
+                        isEdited ? '$dateText (edited)' : dateText,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 11,
+                          fontStyle: isEdited
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    subject.isEmpty ? "No Subject" : subject,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Type: $complaintType",
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(description),
+                  if (imageBase64.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    AppImageThumbnail(
+                      imageBase64: imageBase64,
+                      viewerTitle: "Complaint Photo",
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      const Text(
+                        "Status: ",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              statusIcon,
+                              color: statusColor,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              status,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  ComplaintReplyThread(
+                    complaintId: d.id,
+                    currentSenderRole: 'Consumer',
+                    currentSenderName:
+                        consumerName.isEmpty ? 'Consumer' : consumerName,
+                  ),
+                  if (canCancel) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor:
+                                  Theme.of(context).primaryColor,
+                              side: BorderSide(
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text("Edit"),
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _editComplaint(
+                                d.id,
+                                description,
+                                imageBase64,
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                            ),
+                            icon: const Icon(Icons.cancel_outlined),
+                            label: const Text("Cancel"),
+                            onPressed: () {
+                              Navigator.of(sheetContext).pop();
+                              _confirmCancelComplaint(d.id);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -419,15 +793,7 @@ class _SubmitComplaintScreenState
             // SUBMIT COMPLAINT FORM
             // ==========================================
 
-            const Text(
-              "Submit a Complaint",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 20),
+            
 
             const Text(
               "Subject",
@@ -757,377 +1123,11 @@ class _SubmitComplaintScreenState
                             d.data()
                                 as Map<String, dynamic>;
 
-                        final status =
-                            (data['status'] ?? 'Pending')
-                                .toString();
-
-                        final isEdited =
-                            data['editedAt'] != null;
-
-                        final ticketNumber =
-                            (data['ticketNumber'] ?? '')
-                                .toString();
-
-                        final consumerName =
-                            (data['consumerName'] ?? '')
-                                .toString();
-
-                        final subject =
-                            (data['subject'] ?? '')
-                                .toString();
-
-                        final complaintType =
-                            (data['complaintType'] ?? '')
-                                .toString();
-
-                        final description =
-                            (data['description'] ?? '')
-                                .toString();
-
-                        final imageBase64 =
-                            (data['imageBase64'] ?? '')
-                                .toString();
-
-                        // ==================================
-                        // SUBMISSION DATE
-                        // ==================================
-
-                        final submitted =
-                            data['dateSubmitted'] ??
-                            data['createdAt'];
-
-                        String dateText = '';
-
-                        if (submitted is Timestamp) {
-                          dateText = DateFormat(
-                            'MMM dd, yyyy hh:mm a',
-                          ).format(
-                            submitted.toDate(),
-                          );
-                        }
-
-                        // ==================================
-                        // STATUS LOGIC
-                        // ==================================
-
-                        final statusLower =
-                            status.toLowerCase();
-
-                        final isResolved =
-                            statusLower == 'resolved' ||
-                            statusLower == 'closed' ||
-                            statusLower == 'completed';
-
-                        final isInProgress =
-                            statusLower == 'in progress' ||
-                            statusLower == 'in-progress' ||
-                            statusLower == 'inprogress';
-
-                        final isPending =
-                            statusLower == 'pending';
-
-                        final isCancelled =
-                            statusLower == 'cancelled' ||
-                            statusLower == 'canceled';
-
-                        final canCancel =
-                            isPending || isInProgress;
-
-                        Color statusColor;
-                        IconData statusIcon;
-
-                        if (isResolved) {
-                          statusColor = Colors.green;
-                          statusIcon =
-                              Icons.check_circle;
-                        } else if (isCancelled) {
-                          statusColor = Colors.grey;
-                          statusIcon =
-                              Icons.cancel;
-                        } else if (isInProgress) {
-                          statusColor = Colors.blue;
-                          statusIcon =
-                              Icons.autorenew;
-                        } else if (isPending) {
-                          statusColor = Colors.orange;
-                          statusIcon =
-                              Icons.pending;
-                        } else {
-                          statusColor = Colors.grey;
-                          statusIcon =
-                              Icons.help_outline;
-                        }
-
-                        return Card(
-                          elevation: 3,
-
-                          margin:
-                              const EdgeInsets.only(
-                            bottom: 15,
-                          ),
-
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.all(15),
-
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-
-                              children: [
-
-                                // ==========================
-                                // TICKET + DATE
-                                // ==========================
-
-                                Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.center,
-                                  children: [
-                                    if (ticketNumber.isNotEmpty)
-                                      TicketBadge(
-                                        ticketNumber: ticketNumber,
-                                        color: const Color(
-                                          0xFFD32F2F,
-                                        ),
-                                      ),
-                                    const Spacer(),
-                                    Text(
-                                      isEdited
-                                          ? '$dateText (edited)'
-                                          : dateText,
-                                      textAlign: TextAlign.right,
-                                      style: TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 11,
-                                        fontStyle: isEdited
-                                            ? FontStyle.italic
-                                            : FontStyle.normal,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 8),
-
-                                // ==========================
-                                // SUBJECT
-                                // ==========================
-
-                                Text(
-                                  subject.isEmpty
-                                      ? "No Subject"
-                                      : subject,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-
-                                const SizedBox(
-                                  height: 10,
-                                ),
-
-                                // ==========================
-                                // COMPLAINT TYPE
-                                // ==========================
-
-                                Text(
-                                  "Type: $complaintType",
-
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w500,
-                                  ),
-                                ),
-
-                                const SizedBox(
-                                  height: 5,
-                                ),
-
-                                // ==========================
-                                // DESCRIPTION
-                                // ==========================
-
-                                Text(
-                                  description,
-                                ),
-
-                                if (imageBase64.isNotEmpty) ...[
-                                  const SizedBox(
-                                    height: 12,
-                                  ),
-                                  AppImageThumbnail(
-                                    imageBase64: imageBase64,
-                                    viewerTitle: "Complaint Photo",
-                                  ),
-                                ],
-
-                                const SizedBox(
-                                  height: 12,
-                                ),
-
-                                // ==========================
-                                // STATUS
-                                // ==========================
-
-                                Row(
-                                  children: [
-
-                                    const Text(
-                                      "Status: ",
-
-                                      style: TextStyle(
-                                        fontWeight:
-                                            FontWeight
-                                                .bold,
-                                      ),
-                                    ),
-
-                                    Container(
-                                      padding:
-                                          const EdgeInsets
-                                              .symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-
-                                      decoration:
-                                          BoxDecoration(
-                                        color:
-                                            statusColor
-                                                .withValues(
-                                          alpha: 0.15,
-                                        ),
-
-                                        borderRadius:
-                                            BorderRadius
-                                                .circular(
-                                          20,
-                                        ),
-                                      ),
-
-                                      child: Row(
-                                        mainAxisSize:
-                                            MainAxisSize.min,
-
-                                        children: [
-
-                                          Icon(
-                                            statusIcon,
-                                            color:
-                                                statusColor,
-                                            size: 16,
-                                          ),
-
-                                          const SizedBox(
-                                            width: 5,
-                                          ),
-
-                                          Text(
-                                            status,
-
-                                            style: TextStyle(
-                                              color:
-                                                  statusColor,
-
-                                              fontWeight:
-                                                  FontWeight
-                                                      .bold,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(
-                                  height: 15,
-                                ),
-
-                                const Divider(),
-
-                                const SizedBox(
-                                  height: 8,
-                                ),
-
-                                // ==========================
-                                // REPLY THREAD
-                                // ==========================
-
-                                ComplaintReplyThread(
-                                  complaintId: d.id,
-                                  currentSenderRole: 'Consumer',
-                                  currentSenderName:
-                                      consumerName.isEmpty
-                                          ? 'Consumer'
-                                          : consumerName,
-                                ),
-
-                                // ==========================
-                                // EDIT / CANCEL COMPLAINT
-                                // ==========================
-
-                                if (canCancel) ...[
-                                  const SizedBox(
-                                    height: 14,
-                                  ),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor:
-                                                Theme.of(context)
-                                                    .primaryColor,
-                                            side: BorderSide(
-                                              color: Theme.of(context)
-                                                  .primaryColor,
-                                            ),
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit_outlined,
-                                          ),
-                                          label: const Text(
-                                            "Edit",
-                                          ),
-                                          onPressed: () => _editComplaint(
-                                            d.id,
-                                            description,
-                                            imageBase64,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: Colors.red,
-                                            side: const BorderSide(
-                                              color: Colors.red,
-                                            ),
-                                          ),
-                                          icon: const Icon(
-                                            Icons.cancel_outlined,
-                                          ),
-                                          label: const Text(
-                                            "Cancel",
-                                          ),
-                                          onPressed: () =>
-                                              _confirmCancelComplaint(d.id),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                        return _buildComplaintHistoryTile(
+                          context,
+                          d,
+                          data,
                         );
-
                       }),
                       ],
                     );

@@ -1353,297 +1353,345 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
     QueryDocumentSnapshot complaint,
     Map<String, dynamic> data,
   ) {
-    final subject =
-        _getSubject(data);
+    final subject = _getSubject(data);
+    final ticketNumber = _cleanString(data['ticketNumber']);
+    final consumerName = _getConsumerName(data);
+    final accountNumber = _getAccountNumber(data);
+    final status = _normalizeStatus(data['status']);
+    final statusColor = _getStatusColor(status);
 
-    final ticketNumber =
-        _cleanString(data['ticketNumber']);
-
-    final consumerName =
-        _getConsumerName(data);
-
-    final accountNumber =
-        _getAccountNumber(data);
-
-    final complaintType =
-        _getComplaintType(data);
-
-    final description =
-        _getDescription(data);
-
-    final imageBase64 =
-        _getImageBase64(data);
-
-    final status =
-        _normalizeStatus(data['status']);
-
-    final complaintDate =
-        _getComplaintDate(data);
-
-    final hasDate =
-        complaintDate.millisecondsSinceEpoch !=
-            0;
-
-    final dateText = hasDate
-        ? DateFormat(
-            'MMM dd, yyyy hh:mm a',
-          ).format(complaintDate)
-        : 'Date not available';
-
-    return Container(
-      margin: const EdgeInsets.only(
-        bottom: 16,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.grey.shade200,
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () =>
+          _showComplaintDetailSheet(context, complaint, data),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black
-                .withValues(alpha: 0.07),
-            blurRadius: 8,
-            offset:
-                const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
           children: [
-            // ==================================================
-            // TICKET + STATUS
-            // ==================================================
-
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.center,
-              children: [
-                if (ticketNumber.isNotEmpty)
-                  TicketBadge(
-                    ticketNumber: ticketNumber,
-                    color: primaryOrange,
-                  ),
-                const Spacer(),
-                _buildStatusBadge(
-                  status,
-                ),
-              ],
-            ),
-
-            const SizedBox(
-              height: 12,
-            ),
-
-            // ==================================================
-            // SUBJECT
-            // ==================================================
-
-            Text(
-              subject,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 21,
-                color: Colors.black,
-              ),
-            ),
-
-            const SizedBox(
-              height: 17,
-            ),
-
-            // ==================================================
-            // CONSUMER INFORMATION
-            // ==================================================
-
-            _buildInfoRow(
-              Icons.person_outline,
-              'Consumer',
-              consumerName,
-            ),
-
-            _buildInfoRow(
-              Icons.credit_card_outlined,
-              'Account #',
-              accountNumber,
-            ),
-
-            _buildInfoRow(
-              Icons.report_problem_outlined,
-              'Complaint Type',
-              complaintType,
-            ),
-
-            const SizedBox(
-              height: 10,
-            ),
-
-            // ==================================================
-            // CONSUMER LOCATION
-            // ==================================================
-
-            FutureBuilder<
-                Map<String, dynamic>>(
-              future:
-                  _getConsumerLocation(
-                data,
-              ),
-              builder: (
-                context,
-                locationSnapshot,
-              ) {
-                if (locationSnapshot
-                        .connectionState ==
-                    ConnectionState.waiting) {
-                  return _buildLocationLoading();
-                }
-
-                final location =
-                    locationSnapshot
-                            .data ??
-                        _emptyLocation();
-
-                return _buildConsumerLocationCard(
-                  location,
-                );
-              },
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            // ==================================================
-            // DATE SUBMITTED
-            // ==================================================
-
-            Text(
-              'Date Submitted: $dateText',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-
-            const SizedBox(
-              height: 16,
-            ),
-
-            const Divider(
-              height: 1,
-              thickness: 1,
-            ),
-
-            const SizedBox(
-              height: 20,
-            ),
-
-            // ==================================================
-            // DESCRIPTION
-            // ==================================================
-
-            const Text(
-              'Description',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(
+            Container(
+              width: 8,
               height: 8,
-            ),
-
-            Text(
-              description,
-              style: const TextStyle(
-                fontSize: 15,
-                height: 1.4,
-                color: Colors.black87,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
               ),
             ),
-
-            if (imageBase64.isNotEmpty) ...[
-              const SizedBox(
-                height: 14,
-              ),
-              AppImageThumbnail(
-                imageBase64: imageBase64,
-                viewerTitle: "Complaint Photo",
-              ),
-            ],
-
-            const SizedBox(
-              height: 20,
-            ),
-
-            // ==================================================
-            // REPLY THREAD
-            // ==================================================
-
-            ComplaintReplyThread(
-              complaintId: complaint.id,
-              currentSenderRole: 'Teller',
-              currentSenderName:
-                  FirebaseAuth.instance.currentUser?.email ??
-                      'Teller',
-            ),
-
-            const SizedBox(
-              height: 18,
-            ),
-
-            // ==================================================
-            // UPDATE STATUS BUTTON
-            // ==================================================
-
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                icon: const Icon(
-                  Icons.rule_outlined,
-                  size: 20,
-                ),
-                label: const Text(
-                  'Update Status',
-                ),
-                style:
-                    ElevatedButton.styleFrom(
-                  backgroundColor:
-                      primaryOrange,
-                  foregroundColor:
-                      Colors.white,
-                  elevation: 0,
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                      10,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: primaryOrange,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '$consumerName · $accountNumber',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
                     ),
                   ),
-                ),
-                onPressed: () {
-                  _showStatusDialog(
-                    context,
-                    complaint.id,
-                    status,
-                  );
-                },
+                ],
               ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Colors.grey.shade400,
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ============================================================
+  // COMPLAINT DETAIL SHEET
+  // ============================================================
+
+  void _showComplaintDetailSheet(
+    BuildContext context,
+    QueryDocumentSnapshot complaint,
+    Map<String, dynamic> data,
+  ) {
+    final subject = _getSubject(data);
+    final ticketNumber = _cleanString(data['ticketNumber']);
+    final consumerName = _getConsumerName(data);
+    final accountNumber = _getAccountNumber(data);
+    final complaintType = _getComplaintType(data);
+    final description = _getDescription(data);
+    final imageBase64 = _getImageBase64(data);
+    final status = _normalizeStatus(data['status']);
+    final complaintDate = _getComplaintDate(data);
+    final hasDate = complaintDate.millisecondsSinceEpoch != 0;
+
+    final dateText = hasDate
+        ? DateFormat('MMM dd, yyyy hh:mm a').format(complaintDate)
+        : 'Date not available';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetContext, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // ==============================================
+                  // TICKET + STATUS
+                  // ==============================================
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (ticketNumber.isNotEmpty)
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: primaryOrange,
+                        ),
+                      const Spacer(),
+                      _buildStatusBadge(status),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ==============================================
+                  // SUBJECT
+                  // ==============================================
+
+                  Text(
+                    subject,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: Colors.black,
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ==============================================
+                  // CONSUMER INFORMATION
+                  // ==============================================
+
+                  _buildInfoRow(
+                    Icons.person_outline,
+                    'Consumer',
+                    consumerName,
+                  ),
+
+                  _buildInfoRow(
+                    Icons.credit_card_outlined,
+                    'Account #',
+                    accountNumber,
+                  ),
+
+                  _buildInfoRow(
+                    Icons.report_problem_outlined,
+                    'Complaint Type',
+                    complaintType,
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // ==============================================
+                  // CONSUMER LOCATION
+                  // ==============================================
+
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: _getConsumerLocation(data),
+                    builder: (context, locationSnapshot) {
+                      if (locationSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return _buildLocationLoading();
+                      }
+
+                      final location =
+                          locationSnapshot.data ?? _emptyLocation();
+
+                      return _buildConsumerLocationCard(location);
+                    },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ==============================================
+                  // DATE SUBMITTED
+                  // ==============================================
+
+                  Text(
+                    'Date Submitted: $dateText',
+                    style: TextStyle(
+                      color: Colors.grey.shade500,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  const Divider(height: 1, thickness: 1),
+
+                  const SizedBox(height: 18),
+
+                  // ==============================================
+                  // DESCRIPTION
+                  // ==============================================
+
+                  const Text(
+                    'Description',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      height: 1.4,
+                      color: Colors.black87,
+                    ),
+                  ),
+
+                  if (imageBase64.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    AppImageThumbnail(
+                      imageBase64: imageBase64,
+                      viewerTitle: "Complaint Photo",
+                    ),
+                  ],
+
+                  const SizedBox(height: 18),
+
+                  // ==============================================
+                  // REPLY THREAD
+                  // ==============================================
+
+                  ComplaintReplyThread(
+                    complaintId: complaint.id,
+                    currentSenderRole: 'Teller',
+                    currentSenderName:
+                        FirebaseAuth.instance.currentUser?.email ??
+                            'Teller',
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ==============================================
+                  // UPDATE STATUS BUTTON
+                  // ==============================================
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(
+                        Icons.rule_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Update Status'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryOrange,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: () {
+                        _showStatusDialog(
+                          context,
+                          complaint.id,
+                          status,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

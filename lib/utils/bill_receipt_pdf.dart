@@ -16,8 +16,7 @@ import 'package:soreconnect/widgets/bill_breakdown_view.dart'
 // SORECO "Notice of Billing" slip: cooperative letterhead, account
 // block, reading table, itemized charge breakdown, and payment
 // reminder. Only renders fields the app actually tracks — no
-// fabricated meter number, multiplier, "Type", or multi-month
-// arrears data.
+// fabricated multiplier, "Type", or multi-month arrears data.
 //
 // This PDF is also the single source of truth for the PNG export
 // (the caller rasterizes the first page via `Printing.raster`),
@@ -55,6 +54,7 @@ Future<Uint8List> buildBillReceiptPdf({
 
   final consumerName = (bill['consumerName'] ?? '-').toString();
   final accountNumber = (bill['accountNumber'] ?? '-').toString();
+  final meterNumber = (bill['meterNumber'] ?? '-').toString();
   final billingPeriod = (bill['billingPeriod'] ?? '-').toString();
   final municipality = (bill['municipality'] ?? '').toString();
 
@@ -119,6 +119,7 @@ Future<Uint8List> buildBillReceiptPdf({
 
         // ACCOUNT BLOCK
         _kv('Acct #', accountNumber),
+        _kv('Meter #', meterNumber),
         _kv('Name', consumerName),
         if (address.isNotEmpty) _kv('Address', address),
 

@@ -11,6 +11,8 @@ import 'package:soreconnect/screens/announcements/post_announcement_screen.dart'
 import 'package:soreconnect/screens/announcements/view_announcements_screen.dart';
 
 import 'package:soreconnect/screens/auth/login_screen.dart';
+import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
+import 'package:soreconnect/utils/pending_email_guard.dart';
 
 class DirectorDashboard extends StatefulWidget {
   const DirectorDashboard({super.key});
@@ -50,6 +52,23 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
   ];
 
   // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+  }
+
+  // ============================================================
   // LOGOUT
   // ============================================================
 
@@ -59,9 +78,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
     }
   }
@@ -80,8 +97,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
     final date = timestamp.toDate();
 
     if (_reportType == 'Monthly') {
-      return date.year == _selectedYear &&
-          date.month == _selectedMonth;
+      return date.year == _selectedYear && date.month == _selectedMonth;
     }
 
     return date.year == _selectedYear;
@@ -96,13 +112,9 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
   // submittedAt
   // ============================================================
 
-  DateTime? _getComplaintDate(
-    Map<String, dynamic> data,
-  ) {
+  DateTime? _getComplaintDate(Map<String, dynamic> data) {
     final value =
-        data['createdAt'] ??
-        data['dateSubmitted'] ??
-        data['submittedAt'];
+        data['createdAt'] ?? data['dateSubmitted'] ?? data['submittedAt'];
 
     if (value is Timestamp) {
       return value.toDate();
@@ -123,9 +135,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
   // COMPLAINT PERIOD FILTER
   // ============================================================
 
-  bool _isComplaintWithinSelectedPeriod(
-    Map<String, dynamic> data,
-  ) {
+  bool _isComplaintWithinSelectedPeriod(Map<String, dynamic> data) {
     final date = _getComplaintDate(data);
 
     if (date == null) {
@@ -133,8 +143,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
     }
 
     if (_reportType == 'Monthly') {
-      return date.year == _selectedYear &&
-          date.month == _selectedMonth;
+      return date.year == _selectedYear && date.month == _selectedMonth;
     }
 
     return date.year == _selectedYear;
@@ -166,20 +175,13 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              color: color,
-              size: 26,
-            ),
+            Icon(icon, color: color, size: 26),
 
             const SizedBox(height: 8),
 
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 4),
@@ -187,10 +189,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),
@@ -217,29 +216,19 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
 
       // ========================================================
       // BODY
       // ========================================================
-
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            28,
-          ),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // ==================================================
               // WELCOME CARD
               // ==================================================
@@ -260,7 +249,6 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                 ),
                 child: Row(
                   children: [
-
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -278,10 +266,8 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-
                           Text(
                             'Welcome, ${user?.email ?? 'Director'}',
                             style: const TextStyle(
@@ -306,10 +292,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
                           const Text(
                             'Monitor operations and keep the cooperative running smoothly.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
                           ),
                         ],
                       ),
@@ -323,109 +306,228 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
               // ==================================================
               // MONTHLY / YEARLY FILTER
               // ==================================================
-
-              Row(
-                children: [
-
-                  // VIEW
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _reportType,
-                      decoration: const InputDecoration(
-                        labelText: 'View',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Monthly',
-                          child: Text('Monthly'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Yearly',
-                          child: Text('Yearly'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _reportType =
-                              value ?? 'Monthly';
-                        });
-                      },
-                    ),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F9F4),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _primaryGreen.withValues(alpha: 0.16),
+                    width: 1.2,
                   ),
-
-                  const SizedBox(width: 10),
-
-                  // MONTH
-                  if (_reportType == 'Monthly')
+                  boxShadow: [
+                    BoxShadow(
+                      color: _accentGold.withValues(alpha: 0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // VIEW
                     Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _selectedMonth,
-                        decoration: const InputDecoration(
-                          labelText: 'Month',
-                          border: OutlineInputBorder(),
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _reportType,
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        icon: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _primaryGreen,
+                        ),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'View',
+                          floatingLabelStyle: TextStyle(
+                            color: _primaryGreen,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen,
+                              width: 1.7,
+                            ),
+                          ),
+                          prefixIcon: Icon(
+                            Icons.calendar_month_outlined,
+                            color: _primaryGreen,
+                            size: 18,
+                          ),
                           isDense: true,
                         ),
-                        items: List.generate(
-                          12,
-                          (index) {
-                            return DropdownMenuItem<int>(
-                              value: index + 1,
-                              child: Text(
-                                _months[index],
-                              ),
-                            );
-                          },
-                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Monthly',
+                            child: Text('Monthly'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Yearly',
+                            child: Text('Yearly'),
+                          ),
+                        ],
                         onChanged: (value) {
                           setState(() {
-                            _selectedMonth =
-                                value ??
-                                DateTime.now().month;
+                            _reportType = value ?? 'Monthly';
                           });
                         },
                       ),
                     ),
 
-                  if (_reportType == 'Monthly')
                     const SizedBox(width: 10),
 
-                  // YEAR
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _selectedYear,
-                      decoration: const InputDecoration(
-                        labelText: 'Year',
-                        border: OutlineInputBorder(),
-                        isDense: true,
+                    // MONTH
+                    if (_reportType == 'Monthly')
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _selectedMonth,
+                          isExpanded: true,
+                          dropdownColor: Colors.white,
+                          icon: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: _primaryGreen,
+                          ),
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Month',
+                            floatingLabelStyle: TextStyle(
+                              color: _primaryGreen,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide(
+                                color: _primaryGreen.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide(
+                                color: _primaryGreen.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: BorderSide(
+                                color: _primaryGreen,
+                                width: 1.7,
+                              ),
+                            ),
+                            isDense: true,
+                          ),
+                          items: List.generate(12, (index) {
+                            return DropdownMenuItem<int>(
+                              value: index + 1,
+                              child: Text(_months[index]),
+                            );
+                          }),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedMonth = value ?? DateTime.now().month;
+                            });
+                          },
+                        ),
                       ),
-                      items: List.generate(
-                        5,
-                        (index) {
-                          final year =
-                              DateTime.now().year -
-                              2 +
-                              index;
+
+                    if (_reportType == 'Monthly') const SizedBox(width: 10),
+
+                    // YEAR
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _selectedYear,
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        icon: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _primaryGreen,
+                        ),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Year',
+                          floatingLabelStyle: TextStyle(
+                            color: _primaryGreen,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: _primaryGreen,
+                              width: 1.7,
+                            ),
+                          ),
+                          isDense: true,
+                        ),
+                        items: List.generate(5, (index) {
+                          final year = DateTime.now().year - 2 + index;
 
                           return DropdownMenuItem<int>(
                             value: year,
-                            child: Text(
-                              year.toString(),
-                            ),
+                            child: Text(year.toString()),
                           );
+                        }),
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedYear = value ?? DateTime.now().year;
+                          });
                         },
                       ),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedYear =
-                              value ??
-                              DateTime.now().year;
-                        });
-                      },
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
 
               const SizedBox(height: 24),
@@ -433,68 +535,47 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
               // ==================================================
               // BILLS SUMMARY
               // ==================================================
-
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('bills')
                     .snapshots(),
 
-                builder: (
-                  context,
-                  billSnapshot,
-                ) {
+                builder: (context, billSnapshot) {
                   if (!billSnapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
+                    return const Center(child: CircularProgressIndicator());
                   }
 
-                  final bills =
-                      billSnapshot.data!.docs.where(
-                    (doc) {
-                      final data =
-                          doc.data()
-                              as Map<String, dynamic>;
+                  final bills = billSnapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                      return _isBillWithinSelectedPeriod(
-                        data['generatedAt']
-                            as Timestamp?,
-                      );
-                    },
-                  ).toList();
+                    return _isBillWithinSelectedPeriod(
+                      data['generatedAt'] as Timestamp?,
+                    );
+                  }).toList();
 
                   // TOTAL BILLS
-                  final totalBills =
-                      bills.length;
+                  final totalBills = bills.length;
 
                   // PAID BILLS
-                  final paidBills =
-                      bills.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final paidBills = bills.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     return status == 'paid';
                   }).length;
 
                   // UNPAID BILLS
-                  final unpaidBills =
-                      bills.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final unpaidBills = bills.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     return status != 'paid';
                   }).length;
@@ -508,30 +589,22 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   double totalRevenue = 0;
 
                   for (final doc in bills) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     if (status == 'paid') {
-                      totalRevenue +=
-                          (data['totalAmount']
-                                      as num? ??
-                                  0)
-                              .toDouble();
+                      totalRevenue += (data['totalAmount'] as num? ?? 0)
+                          .toDouble();
                     }
                   }
 
                   return Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       const Text(
                         'Bills Summary',
                         style: TextStyle(
@@ -545,42 +618,31 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                       // ------------------------------------------
                       // TOTAL / PAID / UNPAID
                       // ------------------------------------------
-
                       Row(
                         children: [
-
                           _summaryCard(
                             title: 'Total Bills',
-                            value:
-                                totalBills.toString(),
-                            icon:
-                                Icons.receipt_long,
-                            color:
-                                _primaryGreen,
+                            value: totalBills.toString(),
+                            icon: Icons.receipt_long,
+                            color: _primaryGreen,
                           ),
 
                           const SizedBox(width: 10),
 
                           _summaryCard(
                             title: 'Paid',
-                            value:
-                                paidBills.toString(),
-                            icon:
-                                Icons.check_circle,
-                            color:
-                                Colors.green,
+                            value: paidBills.toString(),
+                            icon: Icons.check_circle,
+                            color: Colors.green,
                           ),
 
                           const SizedBox(width: 10),
 
                           _summaryCard(
                             title: 'Unpaid',
-                            value:
-                                unpaidBills.toString(),
-                            icon:
-                                Icons.pending_actions,
-                            color:
-                                Colors.orange,
+                            value: unpaidBills.toString(),
+                            icon: Icons.pending_actions,
+                            color: Colors.orange,
                           ),
                         ],
                       ),
@@ -590,53 +652,40 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                       // ------------------------------------------
                       // TOTAL REVENUE
                       // ------------------------------------------
-
                       Container(
                         width: double.infinity,
-                        padding:
-                            const EdgeInsets.all(18),
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFE8F5E9),
-                          borderRadius:
-                              BorderRadius.circular(14),
+                          color: const Color(0xFFE8F5E9),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Row(
                           children: [
-
                             const Icon(
                               Icons.payments,
-                              color:
-                                  _primaryGreen,
+                              color: _primaryGreen,
                               size: 30,
                             ),
 
                             const SizedBox(width: 12),
 
                             Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-
                                 const Text(
                                   'Total Revenue',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color:
-                                        Colors.grey,
+                                    color: Colors.grey,
                                   ),
                                 ),
 
                                 Text(
                                   '₱${totalRevenue.toStringAsFixed(2)}',
-                                  style:
-                                      const TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 24,
-                                    fontWeight:
-                                        FontWeight.bold,
-                                    color:
-                                        _primaryGreen,
+                                    fontWeight: FontWeight.bold,
+                                    color: _primaryGreen,
                                   ),
                                 ),
                               ],
@@ -654,69 +703,46 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
               // ==================================================
               // COMPLAINTS SUMMARY
               // ==================================================
-
               StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('complaints')
                     .snapshots(),
 
-                builder: (
-                  context,
-                  complaintSnapshot,
-                ) {
+                builder: (context, complaintSnapshot) {
                   if (!complaintSnapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
+                    return const Center(child: CircularProgressIndicator());
                   }
 
                   // FILTER COMPLAINTS
-                  final complaints =
-                      complaintSnapshot
-                          .data!
-                          .docs
-                          .where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final complaints = complaintSnapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    return _isComplaintWithinSelectedPeriod(
-                      data,
-                    );
+                    return _isComplaintWithinSelectedPeriod(data);
                   }).toList();
 
                   // TOTAL
-                  final totalComplaints =
-                      complaints.length;
+                  final totalComplaints = complaints.length;
 
                   // PENDING
-                  final pendingComplaints =
-                      complaints.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final pendingComplaints = complaints.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     return status == 'pending';
                   }).length;
 
                   // IN PROGRESS
-                  final inProgressComplaints =
-                      complaints.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final inProgressComplaints = complaints.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     return status == 'in progress' ||
                         status == 'in_progress' ||
@@ -724,26 +750,20 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                   }).length;
 
                   // RESOLVED
-                  final resolvedComplaints =
-                      complaints.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
+                  final resolvedComplaints = complaints.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
 
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .trim()
-                            .toLowerCase();
+                    final status = (data['status'] ?? '')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
 
                     return status == 'resolved';
                   }).length;
 
                   return Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
                       const Text(
                         'Complaints Summary',
                         style: TextStyle(
@@ -757,33 +777,22 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                       // ------------------------------------------
                       // TOTAL + PENDING
                       // ------------------------------------------
-
                       Row(
                         children: [
-
                           _summaryCard(
-                            title:
-                                'Total Complaints',
-                            value:
-                                totalComplaints
-                                    .toString(),
-                            icon:
-                                Icons.report_problem,
-                            color:
-                                Colors.red,
+                            title: 'Total Complaints',
+                            value: totalComplaints.toString(),
+                            icon: Icons.report_problem,
+                            color: Colors.red,
                           ),
 
                           const SizedBox(width: 10),
 
                           _summaryCard(
                             title: 'Pending',
-                            value:
-                                pendingComplaints
-                                    .toString(),
-                            icon:
-                                Icons.pending,
-                            color:
-                                Colors.orange,
+                            value: pendingComplaints.toString(),
+                            icon: Icons.pending,
+                            color: Colors.orange,
                           ),
                         ],
                       ),
@@ -793,32 +802,22 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                       // ------------------------------------------
                       // IN PROGRESS + RESOLVED
                       // ------------------------------------------
-
                       Row(
                         children: [
-
                           _summaryCard(
                             title: 'In Progress',
-                            value:
-                                inProgressComplaints
-                                    .toString(),
-                            icon:
-                                Icons.autorenew,
-                            color:
-                                Colors.blue,
+                            value: inProgressComplaints.toString(),
+                            icon: Icons.autorenew,
+                            color: Colors.blue,
                           ),
 
                           const SizedBox(width: 10),
 
                           _summaryCard(
                             title: 'Resolved',
-                            value:
-                                resolvedComplaints
-                                    .toString(),
-                            icon:
-                                Icons.task_alt,
-                            color:
-                                Colors.green,
+                            value: resolvedComplaints.toString(),
+                            icon: Icons.task_alt,
+                            color: Colors.green,
                           ),
                         ],
                       ),
@@ -834,14 +833,11 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
       // ========================================================
       // DIRECTOR BOTTOM NAVIGATION
       // ========================================================
-
-      bottomNavigationBar:
-          BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: 0,
 
         onTap: (index) {
-
           // HOME
           if (index == 0) {
             return;
@@ -855,23 +851,17 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                 return SafeArea(
                   child: Wrap(
                     children: [
-
                       // RATE MANAGEMENT
                       ListTile(
-                        leading: const Icon(
-                          Icons.electric_bolt,
-                        ),
-                        title: const Text(
-                          'Rate Management',
-                        ),
+                        leading: const Icon(Icons.electric_bolt),
+                        title: const Text('Rate Management'),
                         onTap: () {
                           Navigator.pop(context);
 
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const RateManagementScreen(),
+                              builder: (_) => const RateManagementScreen(),
                             ),
                           );
                         },
@@ -879,20 +869,15 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
                       // POST ANNOUNCEMENT
                       ListTile(
-                        leading: const Icon(
-                          Icons.campaign,
-                        ),
-                        title: const Text(
-                          'Post Announcements',
-                        ),
+                        leading: const Icon(Icons.campaign),
+                        title: const Text('Post Announcements'),
                         onTap: () {
                           Navigator.pop(context);
 
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const PostAnnouncementScreen(),
+                              builder: (_) => const PostAnnouncementScreen(),
                             ),
                           );
                         },
@@ -900,20 +885,34 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
                       // VIEW ANNOUNCEMENTS
                       ListTile(
-                        leading: const Icon(
-                          Icons.announcement,
-                        ),
-                        title: const Text(
-                          'View Announcements',
-                        ),
+                        leading: const Icon(Icons.announcement),
+                        title: const Text('View Announcements'),
                         onTap: () {
                           Navigator.pop(context);
 
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const ViewAnnouncementsScreen(),
+                              builder: (_) => const ViewAnnouncementsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+
+                      // MY PROFILE
+                      ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: const Text('My Profile'),
+                        onTap: () {
+                          Navigator.pop(context);
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const StaffProfileScreen(
+                                role: 'Director',
+                                userTypeValue: 'director',
+                              ),
                             ),
                           );
                         },
@@ -937,48 +936,32 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => destinations[index],
-            ),
+            MaterialPageRoute(builder: (_) => destinations[index]),
           );
         },
 
         items: const [
-
           BottomNavigationBarItem(
-            icon: Icon(
-              Icons.home_outlined,
-            ),
+            icon: Icon(Icons.home_outlined),
             label: 'Home',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(
-              Icons.receipt_long,
-            ),
+            icon: Icon(Icons.receipt_long),
             label: 'Bills',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(
-              Icons.report_problem,
-            ),
+            icon: Icon(Icons.report_problem),
             label: 'Complaints',
           ),
 
           BottomNavigationBarItem(
-            icon: Icon(
-              Icons.bar_chart,
-            ),
+            icon: Icon(Icons.bar_chart),
             label: 'Reports',
           ),
 
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.more_horiz,
-            ),
-            label: 'More',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
         ],
       ),
     );

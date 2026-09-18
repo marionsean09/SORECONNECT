@@ -35,7 +35,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   // CONTROLLERS
   // ============================================================
 
-  final TextEditingController _accountNumberController =
+  final TextEditingController _searchValueController =
       TextEditingController();
 
   final TextEditingController _currentReadingController =
@@ -46,6 +46,21 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
   final TextEditingController _adjustmentsController =
       TextEditingController(text: '0');
+
+  // ============================================================
+  // SEARCH MODE
+  //
+  // Lets the meter reader look up the consumer by either their
+  // account number or their meter number — some households only
+  // have the meter number visible on-site.
+  // ============================================================
+
+  static const List<String> _searchModes = [
+    'Account Number',
+    'Meter Number',
+  ];
+
+  String _searchBy = _searchModes.first;
 
   // ============================================================
   // STATE
@@ -154,7 +169,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
   @override
   void dispose() {
-    _accountNumberController.dispose();
+    _searchValueController.dispose();
     _currentReadingController.dispose();
     _interestController.dispose();
     _adjustmentsController.dispose();
@@ -238,7 +253,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
       _consumption = 0;
       _breakdown = null;
 
-      _accountNumberController.clear();
+      _searchValueController.clear();
       _currentReadingController.clear();
     });
   }
@@ -260,7 +275,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
       _consumption = 0;
       _breakdown = null;
 
-      _accountNumberController.clear();
+      _searchValueController.clear();
       _currentReadingController.clear();
     });
   }
@@ -270,8 +285,16 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   // ============================================================
 
   Future<void> _searchConsumer() async {
-    final account =
-        _accountNumberController.text.trim();
+    final searchValue =
+        _searchValueController.text.trim();
+
+    final searchField = _searchBy == 'Meter Number'
+        ? 'meterNumber'
+        : 'accountNumber';
+
+    final searchLabel = _searchBy == 'Meter Number'
+        ? 'meter number'
+        : 'account number';
 
     if (_selectedMunicipality == null) {
       _showSnackBar(
@@ -287,9 +310,9 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
       return;
     }
 
-    if (account.isEmpty) {
+    if (searchValue.isEmpty) {
       _showSnackBar(
-        "Enter a consumer account number.",
+        "Enter a consumer $searchLabel.",
       );
       return;
     }
@@ -305,7 +328,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
     });
 
     try {
-      // Search account number first.
+      // Search by the chosen identifier first.
       //
       // Municipality and barangay are validated
       // after retrieving the consumer. This avoids
@@ -315,8 +338,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
           await _firestore
               .collection("users")
               .where(
-                "accountNumber",
-                isEqualTo: account,
+                searchField,
+                isEqualTo: searchValue,
               )
               .where(
                 "user_type",
@@ -327,7 +350,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       if (consumerQuery.docs.isEmpty) {
         throw Exception(
-          "No consumer found with account number $account.",
+          "No consumer found with $searchLabel $searchValue.",
         );
       }
 
@@ -452,6 +475,16 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         ],
       );
 
+      final meterNumber =
+          _getStringValue(
+        consumerData,
+        [
+          "meterNumber",
+          "meterNo",
+          "meter_number",
+        ],
+      );
+
       final province =
           _getStringValue(
         consumerData,
@@ -467,10 +500,14 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
           "uid": consumerDoc.id,
           ...consumerData,
           "full_name": fullName,
-          "accountNumber":
-              accountNumber.isEmpty
-                  ? account
-                  : accountNumber,
+          "accountNumber": accountNumber.isEmpty &&
+                  searchField == 'accountNumber'
+              ? searchValue
+              : accountNumber,
+          "meterNumber": meterNumber.isEmpty &&
+                  searchField == 'meterNumber'
+              ? searchValue
+              : meterNumber,
           "municipality":
               firestoreMunicipality,
           "barangay":
@@ -739,6 +776,16 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         ],
       );
 
+      final meterNumber =
+          _getStringValue(
+        _consumer!,
+        [
+          "meterNumber",
+          "meterNo",
+          "meter_number",
+        ],
+      );
+
       final municipality =
           _getStringValue(
         _consumer!,
@@ -866,6 +913,11 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       batch.set(readingRef, {
         ...reading.toMap(),
+        // Stable identifier for "my recorded readings" filtering —
+        // unlike `recordedBy` (email), this never breaks if the
+        // meter reader's account email changes later.
+        "recordedByUid": meterReader?.uid,
+        "meterNumber": meterNumber,
         "barangay": resolvedBarangay,
         "municipality": resolvedMunicipality,
         "province": resolvedProvince,
@@ -878,6 +930,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         "consumerId": consumerId,
         "consumerName": consumerName,
         "accountNumber": accountNumber,
+        "meterNumber": meterNumber,
         "barangay": resolvedBarangay,
         "municipality": resolvedMunicipality,
         "province": resolvedProvince,
@@ -911,7 +964,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         _consumption = 0;
         _breakdown = null;
 
-        _accountNumberController.clear();
+        _searchValueController.clear();
         _currentReadingController.clear();
         _interestController.text = '0';
         _adjustmentsController.text = '0';
@@ -1519,7 +1572,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
         children: [
           const Text(
-            "Consumer Account Number",
+            "Find Consumer",
             style:
                 TextStyle(
               fontSize: 16,
@@ -1549,13 +1602,60 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
             height: 12,
           ),
 
+          // ==================================================
+          // SEARCH MODE TOGGLE
+          // ==================================================
+
+          Row(
+            children: _searchModes.map((mode) {
+              final selected = _searchBy == mode;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(mode),
+                  selected: selected,
+                  onSelected: (!enabled || _isLoading)
+                      ? null
+                      : (_) {
+                          setState(() {
+                            _searchBy = mode;
+                            _searchValueController.clear();
+                          });
+                        },
+                  selectedColor:
+                      _primaryOrange.withValues(alpha: 0.15),
+                  labelStyle: TextStyle(
+                    color: selected
+                        ? _primaryOrange
+                        : Colors.grey.shade700,
+                    fontWeight: selected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                    fontSize: 12.5,
+                  ),
+                  side: BorderSide(
+                    color: selected
+                        ? _primaryOrange
+                        : Colors.grey.shade300,
+                  ),
+                  backgroundColor: Colors.grey.shade50,
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(
+            height: 12,
+          ),
+
           Row(
             children: [
               Expanded(
                 child:
                     TextField(
                   controller:
-                      _accountNumberController,
+                      _searchValueController,
 
                   enabled:
                       enabled &&
@@ -1581,12 +1681,16 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
                       InputDecoration(
                     hintText:
                         enabled
-                            ? "Enter account number"
+                            ? (_searchBy == 'Meter Number'
+                                ? "Enter meter number"
+                                : "Enter account number")
                             : "Select location first",
 
                     prefixIcon:
-                        const Icon(
-                      Icons.badge_outlined,
+                        Icon(
+                      _searchBy == 'Meter Number'
+                          ? Icons.speed_outlined
+                          : Icons.badge_outlined,
                       color:
                           _primaryOrange,
                     ),
@@ -1855,8 +1959,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
           Text(
             locationReady
-                ? "Enter the consumer account number "
-                  "above to continue."
+                ? "Enter the consumer's account number "
+                  "or meter number above to continue."
                 : "Choose a municipality and barangay "
                   "before searching for a consumer.",
 
@@ -1901,6 +2005,16 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         "accountNumber",
         "accountNo",
         "account_number",
+      ],
+    );
+
+    final meterNumber =
+        _getStringValue(
+      _consumer!,
+      [
+        "meterNumber",
+        "meterNo",
+        "meter_number",
       ],
     );
 
@@ -2055,6 +2169,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
               accountNumber.isEmpty
                   ? "Not available"
                   : accountNumber,
+            ),
+
+            _buildInfoRow(
+              "Meter No.",
+              meterNumber.isEmpty
+                  ? "Not available"
+                  : meterNumber,
             ),
 
             _buildInfoRow(

@@ -5,11 +5,16 @@ import 'package:intl/intl.dart';
 
 import 'package:soreconnect/screens/meter_reader/meter_reading_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
+import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
+import 'package:soreconnect/utils/pending_email_guard.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/models/bill_model.dart';
 import 'package:soreconnect/utils/bill_calculator.dart';
 import 'package:soreconnect/utils/page_transitions.dart';
 import 'package:soreconnect/widgets/bill_breakdown_view.dart';
+import 'package:soreconnect/widgets/export_bill_sheet.dart';
 import 'package:soreconnect/widgets/minimal_filter_bar.dart';
+import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class MeterReaderDashboard extends StatefulWidget {
   const MeterReaderDashboard({super.key});
@@ -69,12 +74,38 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   void initState() {
     super.initState();
 
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+
     final user = FirebaseAuth.instance.currentUser;
 
+    // Matches on EITHER the stable UID (every reading recorded from
+    // now on) OR the current sign-in email (older readings recorded
+    // before this account ever changed its email). Filtering by
+    // email alone broke this list the moment a meter reader changed
+    // their email — every reading they'd already recorded still had
+    // the OLD email baked in as `recordedBy`, so it silently stopped
+    // matching. UID never changes, so it's the reliable half of
+    // this OR; the email half is just backward compatibility for
+    // readings recorded before `recordedByUid` existed.
     _readingsStream = FirebaseFirestore.instance
         .collection('meter_readings')
-        .where('recordedBy', isEqualTo: user?.email)
+        .where(
+          Filter.or(
+            Filter('recordedByUid', isEqualTo: user?.uid),
+            Filter('recordedBy', isEqualTo: user?.email),
+          ),
+        )
         .snapshots();
+
+    if (user != null) {
+      _backfillOrphanedReadings(user.uid);
+    }
 
     _entranceController = AnimationController(
       vsync: this,
@@ -99,6 +130,48 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
     _entranceController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // ------------------------------------------------------------
+  // BACKFILL ORPHANED READINGS (ONE-TIME)
+  //
+  // Readings recorded before this account's email was ever changed
+  // only have the OLD email in `recordedBy`, with no `recordedByUid`
+  // at all — so they don't match `_readingsStream`'s filter under
+  // the new email. This attaches this account's stable UID to any
+  // reading still carrying one of its known past emails, so they
+  // reappear via the UID half of that filter. Once a document has
+  // `recordedByUid`, later runs skip it — cheap to leave running.
+  // ------------------------------------------------------------
+
+  static const List<String> _knownPastEmails = [
+    'meter_reader1_soreco1@email.com',
+  ];
+
+  Future<void> _backfillOrphanedReadings(String uid) async {
+    for (final oldEmail in _knownPastEmails) {
+      try {
+        final orphaned = await FirebaseFirestore.instance
+            .collection('meter_readings')
+            .where('recordedBy', isEqualTo: oldEmail)
+            .where('recordedByUid', isNull: true)
+            .get();
+
+        if (orphaned.docs.isEmpty) continue;
+
+        final batch = FirebaseFirestore.instance.batch();
+
+        for (final doc in orphaned.docs) {
+          batch.update(doc.reference, {'recordedByUid': uid});
+        }
+
+        await batch.commit();
+      } catch (e) {
+        debugPrint(
+          'Failed to backfill readings for $oldEmail: $e',
+        );
+      }
+    }
   }
 
   // ------------------------------------------------------------
@@ -748,41 +821,124 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   Widget _buildReadingCard(
     QueryDocumentSnapshot doc,
   ) {
-    final data =
-        doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
 
-    final timestamp =
-        data['recordedAt'] as Timestamp?;
+    final status = (data['status'] ?? 'Pending').toString();
+
+    final isVerified = status.toLowerCase() == 'verified' ||
+        status.toLowerCase() == 'billed';
+
+    final statusColor = isVerified ? Colors.green : Colors.orange;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showReadingDetailSheet(doc),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data['consumerName'] ?? 'Unknown Consumer',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${data['accountNumber'] ?? 'N/A'} · '
+                    '${data['billingPeriod'] ?? 'N/A'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                status,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Colors.grey.shade400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // READING DETAIL SHEET
+  // ============================================================
+
+  void _showReadingDetailSheet(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    final timestamp = data['recordedAt'] as Timestamp?;
 
     final date = timestamp != null
-        ? DateFormat(
-            'MMM dd, yyyy • hh:mm a',
-          ).format(
+        ? DateFormat('MMM dd, yyyy • hh:mm a').format(
             timestamp.toDate(),
           )
         : 'No date';
 
-    final status =
-        (data['status'] ?? 'Pending').toString();
+    final status = (data['status'] ?? 'Pending').toString();
 
-    final isVerified =
-        status.toLowerCase() == 'verified' ||
-            status.toLowerCase() == 'billed';
+    final isVerified = status.toLowerCase() == 'verified' ||
+        status.toLowerCase() == 'billed';
 
-    final location =
-        _getReadingLocation(data);
+    final location = _getReadingLocation(data);
 
-    final barangay =
-        location['barangay']?.toString() ?? '';
-
-    final municipality =
-        location['municipality']?.toString() ?? '';
-
-    final province =
-        location['province']?.toString() ?? '';
-
-    final address =
-        location['address']?.toString() ?? '';
+    final barangay = location['barangay']?.toString() ?? '';
+    final municipality = location['municipality']?.toString() ?? '';
+    final province = location['province']?.toString() ?? '';
+    final address = location['address']?.toString() ?? '';
 
     final rawBreakdown = data['breakdown'];
     final BillBreakdown? breakdown = rawBreakdown is Map
@@ -796,247 +952,279 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
     final consumption =
         (data['consumption'] as num?)?.toDouble() ?? 0.0;
 
-    return Card(
-      margin: const EdgeInsets.only(
-        bottom: 12,
+    final ticketNumber = BillModel.ticketNumberFor(data, doc.id);
+
+    // `bill_receipt_pdf.dart` reads the amount under `totalAmount`
+    // (the `bills` collection's field name) — meter reading docs
+    // store it as `computedAmount`, so map it across for export.
+    final exportBill = {
+      ...data,
+      'totalAmount': data['computedAmount'] ?? 0,
+    };
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-
-            // ------------------------------------------------
-            // NAME + STATUS
-            // ------------------------------------------------
-
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    data['consumerName'] ??
-                        'Unknown Consumer',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isVerified
-                        ? Colors.green
-                            .withValues(alpha: 0.12)
-                        : Colors.orange
-                            .withValues(alpha: 0.12),
-                    borderRadius:
-                        BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: isVerified
-                          ? Colors.green
-                          : Colors.orange,
-                      fontWeight:
-                          FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-
-            // ------------------------------------------------
-            // ACCOUNT
-            // ------------------------------------------------
-
-            Text(
-              'Account: ${data['accountNumber'] ?? 'N/A'}',
-              style: const TextStyle(
-                fontSize: 13,
-              ),
-            ),
-
-            const SizedBox(height: 4),
-
-            // ------------------------------------------------
-            // BILLING PERIOD
-            // ------------------------------------------------
-
-            Text(
-              'Billing Period: ${data['billingPeriod'] ?? 'N/A'}',
-              style: const TextStyle(
-                fontSize: 13,
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // ------------------------------------------------
-            // LOCATION
-            // ------------------------------------------------
-
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF5F8F5),
-                borderRadius:
-                    BorderRadius.circular(10),
-                border: Border.all(
-                  color: Colors.green
-                      .withValues(alpha: 0.12),
-                ),
-              ),
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.82,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetContext, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // ------------------------------------------------
+                  // TICKET + EXPORT
+                  // ------------------------------------------------
+
                   Row(
                     children: [
-                      Icon(
-                        Icons.location_on,
-                        size: 18,
-                        color: _primaryGreen,
-                      ),
-                      const SizedBox(width: 7),
-                      const Text(
-                        'Location',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight:
-                              FontWeight.bold,
-                          color:
-                              _primaryGreen,
+                      if (ticketNumber.isNotEmpty)
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: _primaryGreen,
+                        ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.ios_share),
+                        tooltip: 'Export reading',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => showExportBillOptions(
+                          sheetContext,
+                          bill: exportBill,
+                          breakdown: breakdown,
+                          ticketNumber: ticketNumber.isNotEmpty
+                              ? ticketNumber
+                              : doc.id,
                         ),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 8),
+                  // ------------------------------------------------
+                  // NAME + STATUS
+                  // ------------------------------------------------
 
-                  _locationRow(
-                    Icons.location_on_outlined,
-                    'Barangay',
-                    barangay,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          data['consumerName'] ??
+                              'Unknown Consumer',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isVerified
+                              ? Colors.green.withValues(alpha: 0.12)
+                              : Colors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            color: isVerified
+                                ? Colors.green
+                                : Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
 
-                  _locationRow(
-                    Icons.location_city_outlined,
-                    'Municipality',
-                    municipality,
+                  const SizedBox(height: 10),
+
+                  Text(
+                    'Account: ${data['accountNumber'] ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 13),
                   ),
 
-                  _locationRow(
-                    Icons.map_outlined,
-                    'Province',
-                    province,
+                  const SizedBox(height: 4),
+
+                  Text(
+                    'Meter No: ${data['meterNumber'] ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 13),
                   ),
 
-                  _locationRow(
-                    Icons.home_outlined,
-                    'Address',
-                    address,
+                  const SizedBox(height: 4),
+
+                  Text(
+                    'Billing Period: '
+                    '${data['billingPeriod'] ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 13),
                   ),
 
-                  if (barangay.isEmpty &&
-                      municipality.isEmpty &&
-                      address.isEmpty)
-                    const Text(
-                      'Location not available',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                        fontStyle:
-                            FontStyle.italic,
+                  const SizedBox(height: 12),
+
+                  // ------------------------------------------------
+                  // LOCATION
+                  // ------------------------------------------------
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F8F5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.12),
                       ),
                     ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on,
+                              size: 18,
+                              color: _primaryGreen,
+                            ),
+                            const SizedBox(width: 7),
+                            const Text(
+                              'Location',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: _primaryGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        _locationRow(
+                          Icons.location_on_outlined,
+                          'Barangay',
+                          barangay,
+                        ),
+                        _locationRow(
+                          Icons.location_city_outlined,
+                          'Municipality',
+                          municipality,
+                        ),
+                        _locationRow(
+                          Icons.map_outlined,
+                          'Province',
+                          province,
+                        ),
+                        _locationRow(
+                          Icons.home_outlined,
+                          'Address',
+                          address,
+                        ),
+                        if (barangay.isEmpty &&
+                            municipality.isEmpty &&
+                            address.isEmpty)
+                          const Text(
+                            'Location not available',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  const Divider(),
+
+                  // ------------------------------------------------
+                  // READINGS / BILL BREAKDOWN
+                  // ------------------------------------------------
+
+                  if (breakdown != null) ...[
+                    BillBreakdownView(
+                      breakdown: breakdown,
+                      previousReading: previousReading,
+                      currentReading: currentReading,
+                      consumption: consumption,
+                      municipality: municipality,
+                      initiallyExpanded: true,
+                    ),
+                    const SizedBox(height: 8),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Previous: ${data['previousReading'] ?? 0}',
+                        ),
+                        Text(
+                          'Current: ${data['currentReading'] ?? 0}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Consumption: ${data['consumption'] ?? 0} kWh',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // ------------------------------------------------
+                  // DATE
+                  // ------------------------------------------------
+
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time,
+                        size: 15,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        date,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 10),
-
-            const Divider(),
-
-            // ------------------------------------------------
-            // READINGS / BILL BREAKDOWN
-            // ------------------------------------------------
-
-            if (breakdown != null) ...[
-              BillBreakdownView(
-                breakdown: breakdown,
-                previousReading: previousReading,
-                currentReading: currentReading,
-                consumption: consumption,
-                municipality: municipality,
-              ),
-              const SizedBox(height: 8),
-            ] else ...[
-              Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Previous: ${data['previousReading'] ?? 0}',
-                  ),
-                  Text(
-                    'Current: ${data['currentReading'] ?? 0}',
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 5),
-
-              Text(
-                'Consumption: ${data['consumption'] ?? 0} kWh',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-            ],
-
-            // ------------------------------------------------
-            // DATE
-            // ------------------------------------------------
-
-            Row(
-              children: [
-                const Icon(
-                  Icons.access_time,
-                  size: 15,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  date,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1672,6 +1860,16 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                 context,
                 smoothPageRoute(const MeterReadingScreen()),
               );
+            } else if (index == 2) {
+              Navigator.push(
+                context,
+                smoothPageRoute(
+                  const StaffProfileScreen(
+                    role: 'Meter Reader',
+                    userTypeValue: 'meter_reader',
+                  ),
+                ),
+              );
             }
           },
           items: const [
@@ -1686,6 +1884,12 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                 Icons.edit,
               ),
               label: 'Readings',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.person_outline,
+              ),
+              label: 'Profile',
             ),
           ],
         ),

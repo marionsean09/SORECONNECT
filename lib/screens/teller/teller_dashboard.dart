@@ -6,7 +6,9 @@ import 'package:soreconnect/screens/teller/generate_reports_screen.dart';
 import 'package:soreconnect/screens/teller/manage_bills_screen.dart';
 import 'package:soreconnect/screens/complaints/manage_complaints_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
+import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
 import 'package:soreconnect/utils/page_transitions.dart';
+import 'package:soreconnect/utils/pending_email_guard.dart';
 
 class TellerDashboard extends StatefulWidget {
   const TellerDashboard({super.key});
@@ -56,6 +58,14 @@ class _TellerDashboardState extends State<TellerDashboard>
   void initState() {
     super.initState();
 
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+
     _entranceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
@@ -84,10 +94,7 @@ class _TellerDashboardState extends State<TellerDashboard>
     await _auth.signOut();
 
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        smoothPageRoute(const LoginScreen()),
-      );
+      Navigator.pushReplacement(context, smoothPageRoute(const LoginScreen()));
     }
   }
 
@@ -101,8 +108,7 @@ class _TellerDashboardState extends State<TellerDashboard>
     final date = timestamp.toDate();
 
     if (_reportType == 'Monthly') {
-      return date.year == _selectedYear &&
-          date.month == _selectedMonth;
+      return date.year == _selectedYear && date.month == _selectedMonth;
     }
 
     return date.year == _selectedYear;
@@ -114,9 +120,7 @@ class _TellerDashboardState extends State<TellerDashboard>
   // Supports all known date fields.
   // ============================================================
 
-  DateTime? _getComplaintDate(
-    Map<String, dynamic> data,
-  ) {
+  DateTime? _getComplaintDate(Map<String, dynamic> data) {
     final possibleValues = [
       data['createdAt'],
       data['dateSubmitted'],
@@ -160,9 +164,7 @@ class _TellerDashboardState extends State<TellerDashboard>
   // from disappearing from the dashboard.
   // ============================================================
 
-  bool _isComplaintWithinSelectedPeriod(
-    Map<String, dynamic> data,
-  ) {
+  bool _isComplaintWithinSelectedPeriod(Map<String, dynamic> data) {
     final date = _getComplaintDate(data);
 
     // ------------------------------------------------------------
@@ -180,8 +182,7 @@ class _TellerDashboardState extends State<TellerDashboard>
     // ------------------------------------------------------------
 
     if (_reportType == 'Monthly') {
-      return date.year == _selectedYear &&
-          date.month == _selectedMonth;
+      return date.year == _selectedYear && date.month == _selectedMonth;
     }
 
     // ------------------------------------------------------------
@@ -211,13 +212,8 @@ class _TellerDashboardState extends State<TellerDashboard>
   // Missing status = Pending
   // ============================================================
 
-  String _normalizeComplaintStatus(
-    dynamic value,
-  ) {
-    final status = (value ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
+  String _normalizeComplaintStatus(dynamic value) {
+    final status = (value ?? '').toString().trim().toLowerCase();
 
     // ------------------------------------------------------------
     // MISSING STATUS
@@ -299,11 +295,7 @@ class _TellerDashboardState extends State<TellerDashboard>
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              color: color,
-              size: 26,
-            ),
+            Icon(icon, color: color, size: 26),
             const SizedBox(height: 8),
             Text(
               value,
@@ -317,10 +309,7 @@ class _TellerDashboardState extends State<TellerDashboard>
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.grey,
-              ),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
           ],
         ),
@@ -340,15 +329,9 @@ class _TellerDashboardState extends State<TellerDashboard>
         elevation: 0,
         actions: [
           Listener(
-            onPointerDown: (_) => setState(
-              () => _logoutPressed = true,
-            ),
-            onPointerUp: (_) => setState(
-              () => _logoutPressed = false,
-            ),
-            onPointerCancel: (_) => setState(
-              () => _logoutPressed = false,
-            ),
+            onPointerDown: (_) => setState(() => _logoutPressed = true),
+            onPointerUp: (_) => setState(() => _logoutPressed = false),
+            onPointerCancel: (_) => setState(() => _logoutPressed = false),
             child: AnimatedScale(
               scale: _logoutPressed ? 0.88 : 1.0,
               duration: const Duration(milliseconds: 120),
@@ -364,670 +347,691 @@ class _TellerDashboardState extends State<TellerDashboard>
 
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            28,
-          ),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: SlideTransition(
               position: _slideAnimation,
               child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              // ==================================================
-              // HEADER
-              // ==================================================
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _primaryGreen.withValues(alpha: 0.10),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: _accentGold.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.person,
-                        color: _accentGold,
-                        size: 30,
-                      ),
-                    ),
-
-                    const SizedBox(width: 14),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome, ${user?.email ?? 'Teller'}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: _primaryGreen,
-                            ),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          const Text(
-                            'Role: TELLER',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black54,
-                            ),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          const Text(
-                            'Manage bill status, generate reports, and support service requests.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ==================================================
-              // MONTHLY / YEARLY FILTER
-              // ==================================================
-
-              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ==================================================
+                  // HEADER
+                  // ==================================================
 
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _reportType,
-                      decoration: const InputDecoration(
-                        labelText: 'View',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Monthly',
-                          child: Text('Monthly'),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _primaryGreen.withValues(alpha: 0.10),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
                         ),
-                        DropdownMenuItem(
-                          value: 'Yearly',
-                          child: Text('Yearly'),
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
                         ),
                       ],
-                      onChanged: (value) {
-                        setState(() {
-                          _reportType =
-                              value ?? 'Monthly';
-                        });
-                      },
                     ),
-                  ),
-
-                  const SizedBox(width: 10),
-
-                  if (_reportType == 'Monthly')
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _selectedMonth,
-                        decoration: const InputDecoration(
-                          labelText: 'Month',
-                          border: OutlineInputBorder(),
-                          isDense: true,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _accentGold.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.person,
+                            color: _accentGold,
+                            size: 30,
+                          ),
                         ),
-                        items: List.generate(
-                          12,
-                          (index) {
-                            return DropdownMenuItem(
-                              value: index + 1,
-                              child: Text(
-                                _months[index],
+
+                        const SizedBox(width: 14),
+
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Welcome, ${user?.email ?? 'Teller'}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: _primaryGreen,
+                                ),
                               ),
-                            );
-                          },
+
+                              const SizedBox(height: 4),
+
+                              const Text(
+                                'Role: TELLER',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black54,
+                                ),
+                              ),
+
+                              const SizedBox(height: 4),
+
+                              const Text(
+                                'Manage bill status, generate reports, and support service requests.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedMonth =
-                                value ??
-                                    DateTime.now().month;
-                          });
-                        },
-                      ),
-                    ),
-
-                  if (_reportType == 'Monthly')
-                    const SizedBox(width: 10),
-
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _selectedYear,
-                      decoration: const InputDecoration(
-                        labelText: 'Year',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items: List.generate(
-                        5,
-                        (index) {
-                          final year =
-                              DateTime.now().year -
-                                  2 +
-                                  index;
-
-                          return DropdownMenuItem(
-                            value: year,
-                            child: Text(
-                              year.toString(),
-                            ),
-                          );
-                        },
-                      ),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedYear =
-                              value ??
-                                  DateTime.now().year;
-                        });
-                      },
+                      ],
                     ),
                   ),
-                ],
-              ),
 
-              const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-              // ==================================================
-              // BILLS STREAM
-              //
-              // UNCHANGED
-              // ==================================================
-
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('bills')
-                    .snapshots(),
-                builder: (context, billSnapshot) {
-
-                  if (!billSnapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
-                  }
-
-                  final bills =
-                      billSnapshot.data!.docs.where(
-                    (doc) {
-                      final data =
-                          doc.data()
-                              as Map<String, dynamic>;
-
-                      return _isBillWithinSelectedPeriod(
-                        data['generatedAt']
-                            as Timestamp?,
-                      );
-                    },
-                  ).toList();
-
-                  final totalBills = bills.length;
-
-                  final paidBills =
-                      bills.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
-
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .toLowerCase();
-
-                    return status == 'paid';
-                  }).length;
-
-                  final unpaidBills =
-                      bills.where((doc) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
-
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .toLowerCase();
-
-                    return status != 'paid';
-                  }).length;
-
-                  double totalRevenue = 0;
-
-                  for (final doc in bills) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
-
-                    final status =
-                        (data['status'] ?? '')
-                            .toString()
-                            .toLowerCase();
-
-                    if (status == 'paid') {
-                      totalRevenue +=
-                          (data['totalAmount']
-                                      as num? ??
-                                  0)
-                              .toDouble();
-                    }
-                  }
-
-                  return Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-
-                      const Text(
-                        'Bills Summary',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                  // ==================================================
+                  // MONTHLY / YEARLY FILTER
+                  // ==================================================
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: _primaryGreen.withValues(alpha: 0.03),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _primaryGreen.withValues(alpha: 0.18),
                       ),
-
-                      const SizedBox(height: 12),
-
-                      Row(
-                        children: [
-
-                          _summaryCard(
-                            title: 'Total Bills',
-                            value:
-                                totalBills.toString(),
-                            icon:
-                                Icons.receipt_long,
-                            color: _primaryGreen,
-                          ),
-
-                          const SizedBox(width: 10),
-
-                          _summaryCard(
-                            title: 'Paid',
-                            value:
-                                paidBills.toString(),
-                            icon:
-                                Icons.check_circle,
-                            color: Colors.green,
-                          ),
-
-                          const SizedBox(width: 10),
-
-                          _summaryCard(
-                            title: 'Unpaid',
-                            value:
-                                unpaidBills.toString(),
-                            icon:
-                                Icons.pending_actions,
-                            color: Colors.orange,
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Container(
-                        width: double.infinity,
-                        padding:
-                            const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFE8F5E9),
-                          borderRadius:
-                              BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _primaryGreen
-                                  .withValues(alpha: 0.10),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: _primaryGreen.withValues(alpha: 0.04),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
-                        child: Row(
-                          children: [
-
-                            const Icon(
-                              Icons.payments,
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _reportType,
+                            isExpanded: true,
+                            dropdownColor: Colors.white,
+                            icon: Icon(
+                              Icons.keyboard_arrow_down_rounded,
                               color: _primaryGreen,
-                              size: 30,
                             ),
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'View',
+                              floatingLabelStyle: TextStyle(
+                                color: _primaryGreen,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen,
+                                  width: 1.7,
+                                ),
+                              ),
+                              prefixIcon: Icon(
+                                Icons.calendar_month_outlined,
+                                color: _primaryGreen,
+                                size: 18,
+                              ),
+                              isDense: true,
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Monthly',
+                                child: Text('Monthly'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Yearly',
+                                child: Text('Yearly'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                _reportType = value ?? 'Monthly';
+                              });
+                            },
+                          ),
+                        ),
 
-                            const SizedBox(width: 12),
+                        const SizedBox(width: 10),
 
-                            Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-
-                                const Text(
-                                  'Total Revenue',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.grey,
+                        if (_reportType == 'Monthly')
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              initialValue: _selectedMonth,
+                              isExpanded: true,
+                              dropdownColor: Colors.white,
+                              icon: Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: _primaryGreen,
+                              ),
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: 'Month',
+                                floatingLabelStyle: TextStyle(
+                                  color: _primaryGreen,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: _primaryGreen.withValues(alpha: 0.25),
                                   ),
                                 ),
-
-                                Text(
-                                  '₱${totalRevenue.toStringAsFixed(2)}',
-                                  style:
-                                      const TextStyle(
-                                    fontSize: 25,
-                                    fontWeight:
-                                        FontWeight.w800,
-                                    letterSpacing: -0.4,
-                                    color:
-                                        _primaryGreen,
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: _primaryGreen.withValues(alpha: 0.25),
                                   ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: BorderSide(
+                                    color: _primaryGreen,
+                                    width: 1.7,
+                                  ),
+                                ),
+                                isDense: true,
+                              ),
+                              items: List.generate(12, (index) {
+                                return DropdownMenuItem(
+                                  value: index + 1,
+                                  child: Text(_months[index]),
+                                );
+                              }),
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedMonth =
+                                      value ?? DateTime.now().month;
+                                });
+                              },
+                            ),
+                          ),
+
+                        if (_reportType == 'Monthly') const SizedBox(width: 10),
+
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _selectedYear,
+                            isExpanded: true,
+                            dropdownColor: Colors.white,
+                            icon: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: _primaryGreen,
+                            ),
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: 'Year',
+                              floatingLabelStyle: TextStyle(
+                                color: _primaryGreen,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen.withValues(alpha: 0.25),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(
+                                  color: _primaryGreen,
+                                  width: 1.7,
+                                ),
+                              ),
+                              isDense: true,
+                            ),
+                            items: List.generate(5, (index) {
+                              final year = DateTime.now().year - 2 + index;
+
+                              return DropdownMenuItem(
+                                value: year,
+                                child: Text(year.toString()),
+                              );
+                            }),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedYear = value ?? DateTime.now().year;
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ==================================================
+                  // BILLS STREAM
+                  //
+                  // UNCHANGED
+                  // ==================================================
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('bills')
+                        .snapshots(),
+                    builder: (context, billSnapshot) {
+                      if (!billSnapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final bills = billSnapshot.data!.docs.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        return _isBillWithinSelectedPeriod(
+                          data['generatedAt'] as Timestamp?,
+                        );
+                      }).toList();
+
+                      final totalBills = bills.length;
+
+                      final paidBills = bills.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                        return status == 'paid';
+                      }).length;
+
+                      final unpaidBills = bills.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                        return status != 'paid';
+                      }).length;
+
+                      double totalRevenue = 0;
+
+                      for (final doc in bills) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .toLowerCase();
+
+                        if (status == 'paid') {
+                          totalRevenue += (data['totalAmount'] as num? ?? 0)
+                              .toDouble();
+                        }
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Bills Summary',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          Row(
+                            children: [
+                              _summaryCard(
+                                title: 'Total Bills',
+                                value: totalBills.toString(),
+                                icon: Icons.receipt_long,
+                                color: _primaryGreen,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Paid',
+                                value: paidBills.toString(),
+                                icon: Icons.check_circle,
+                                color: Colors.green,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Unpaid',
+                                value: unpaidBills.toString(),
+                                icon: Icons.pending_actions,
+                                color: Colors.orange,
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _primaryGreen.withValues(alpha: 0.10),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.payments,
+                                  color: _primaryGreen,
+                                  size: 30,
+                                ),
 
-              const SizedBox(height: 24),
+                                const SizedBox(width: 12),
 
-              // ==================================================
-              // COMPLAINTS SUMMARY
-              //
-              // FIXED:
-              //
-              // 1. ALL COMPLAINT DOCUMENTS ARE FETCHED.
-              // 2. MISSING DATE DOES NOT REMOVE THE COMPLAINT.
-              // 3. MISSING STATUS = PENDING.
-              // 4. STATUS FORMATS ARE NORMALIZED.
-              // 5. UNKNOWN STATUS = PENDING.
-              // ==================================================
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Total Revenue',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
 
-              StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('complaints')
-                    .snapshots(),
-                builder:
-                    (context, complaintSnapshot) {
-
-                  // ------------------------------------------------
-                  // LOADING
-                  // ------------------------------------------------
-
-                  if (complaintSnapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return const Center(
-                      child:
-                          CircularProgressIndicator(),
-                    );
-                  }
-
-                  // ------------------------------------------------
-                  // ERROR
-                  // ------------------------------------------------
-
-                  if (complaintSnapshot.hasError) {
-                    return Container(
-                      width: double.infinity,
-                      padding:
-                          const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius:
-                            BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Error loading complaints:\n'
-                        '${complaintSnapshot.error}',
-                        style: TextStyle(
-                          color: Colors.red.shade800,
-                        ),
-                      ),
-                    );
-                  }
-
-                  // ------------------------------------------------
-                  // NO SNAPSHOT
-                  // ------------------------------------------------
-
-                  if (!complaintSnapshot.hasData) {
-                    return const Center(
-                      child:
-                          CircularProgressIndicator(),
-                    );
-                  }
-
-                  // ------------------------------------------------
-                  // FETCH EVERY COMPLAINT
-                  //
-                  // IMPORTANT:
-                  // NO Firestore WHERE CLAUSE.
-                  //
-                  // This means documents with missing fields
-                  // are still retrieved.
-                  // ------------------------------------------------
-
-                  final allComplaints =
-                      complaintSnapshot.data!.docs;
-
-                  // ------------------------------------------------
-                  // PERIOD FILTER
-                  // ------------------------------------------------
-
-                  final complaints =
-                      allComplaints.where((doc) {
-
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
-
-                    return _isComplaintWithinSelectedPeriod(
-                      data,
-                    );
-                  }).toList();
-
-                  // ------------------------------------------------
-                  // CLASSIFICATION COUNTERS
-                  // ------------------------------------------------
-
-                  int pendingComplaints = 0;
-                  int inProgressComplaints = 0;
-                  int resolvedComplaints = 0;
-
-                  // ------------------------------------------------
-                  // CLASSIFY EVERY COMPLAINT
-                  // ------------------------------------------------
-
-                  for (final doc in complaints) {
-                    final data =
-                        doc.data()
-                            as Map<String, dynamic>;
-
-                    final normalizedStatus =
-                        _normalizeComplaintStatus(
-                      data['status'],
-                    );
-
-                    switch (normalizedStatus) {
-                      case 'Pending':
-                        pendingComplaints++;
-                        break;
-
-                      case 'In Progress':
-                        inProgressComplaints++;
-                        break;
-
-                      case 'Resolved':
-                        resolvedComplaints++;
-                        break;
-                    }
-                  }
-
-                  // ------------------------------------------------
-                  // TOTAL
-                  //
-                  // This is based directly on every complaint
-                  // that passed the period check.
-                  // ------------------------------------------------
-
-                  final totalComplaints =
-                      complaints.length;
-
-                  // ------------------------------------------------
-                  // RETURN SUMMARY
-                  // ------------------------------------------------
-
-                  return Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-
-                      const Text(
-                        'Complaints Summary',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      Text(
-                        _reportType == 'Monthly'
-                            ? '${_months[_selectedMonth - 1]} $_selectedYear'
-                            : 'Year $_selectedYear',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // ==========================================
-                      // TOTAL + PENDING
-                      // ==========================================
-
-                      Row(
-                        children: [
-
-                          _summaryCard(
-                            title:
-                                'Total Complaints',
-                            value:
-                                totalComplaints
-                                    .toString(),
-                            icon:
-                                Icons.report_problem,
-                            color: Colors.red,
-                          ),
-
-                          const SizedBox(width: 10),
-
-                          _summaryCard(
-                            title: 'Pending',
-                            value:
-                                pendingComplaints
-                                    .toString(),
-                            icon:
-                                Icons.pending,
-                            color: Colors.orange,
+                                    Text(
+                                      '₱${totalRevenue.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 25,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.4,
+                                        color: _primaryGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ],
-                      ),
+                      );
+                    },
+                  ),
 
-                      const SizedBox(height: 10),
+                  const SizedBox(height: 24),
 
-                      // ==========================================
-                      // IN PROGRESS + RESOLVED
-                      // ==========================================
+                  // ==================================================
+                  // COMPLAINTS SUMMARY
+                  //
+                  // FIXED:
+                  //
+                  // 1. ALL COMPLAINT DOCUMENTS ARE FETCHED.
+                  // 2. MISSING DATE DOES NOT REMOVE THE COMPLAINT.
+                  // 3. MISSING STATUS = PENDING.
+                  // 4. STATUS FORMATS ARE NORMALIZED.
+                  // 5. UNKNOWN STATUS = PENDING.
+                  // ==================================================
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('complaints')
+                        .snapshots(),
+                    builder: (context, complaintSnapshot) {
+                      // ------------------------------------------------
+                      // LOADING
+                      // ------------------------------------------------
 
-                      Row(
+                      if (complaintSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      // ------------------------------------------------
+                      // ERROR
+                      // ------------------------------------------------
+
+                      if (complaintSnapshot.hasError) {
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Error loading complaints:\n'
+                            '${complaintSnapshot.error}',
+                            style: TextStyle(color: Colors.red.shade800),
+                          ),
+                        );
+                      }
+
+                      // ------------------------------------------------
+                      // NO SNAPSHOT
+                      // ------------------------------------------------
+
+                      if (!complaintSnapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      // ------------------------------------------------
+                      // FETCH EVERY COMPLAINT
+                      //
+                      // IMPORTANT:
+                      // NO Firestore WHERE CLAUSE.
+                      //
+                      // This means documents with missing fields
+                      // are still retrieved.
+                      // ------------------------------------------------
+
+                      final allComplaints = complaintSnapshot.data!.docs;
+
+                      // ------------------------------------------------
+                      // PERIOD FILTER
+                      // ------------------------------------------------
+
+                      final complaints = allComplaints.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        return _isComplaintWithinSelectedPeriod(data);
+                      }).toList();
+
+                      // ------------------------------------------------
+                      // CLASSIFICATION COUNTERS
+                      // ------------------------------------------------
+
+                      int pendingComplaints = 0;
+                      int inProgressComplaints = 0;
+                      int resolvedComplaints = 0;
+
+                      // ------------------------------------------------
+                      // CLASSIFY EVERY COMPLAINT
+                      // ------------------------------------------------
+
+                      for (final doc in complaints) {
+                        final data = doc.data() as Map<String, dynamic>;
+
+                        final normalizedStatus = _normalizeComplaintStatus(
+                          data['status'],
+                        );
+
+                        switch (normalizedStatus) {
+                          case 'Pending':
+                            pendingComplaints++;
+                            break;
+
+                          case 'In Progress':
+                            inProgressComplaints++;
+                            break;
+
+                          case 'Resolved':
+                            resolvedComplaints++;
+                            break;
+                        }
+                      }
+
+                      // ------------------------------------------------
+                      // TOTAL
+                      //
+                      // This is based directly on every complaint
+                      // that passed the period check.
+                      // ------------------------------------------------
+
+                      final totalComplaints = complaints.length;
+
+                      // ------------------------------------------------
+                      // RETURN SUMMARY
+                      // ------------------------------------------------
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-
-                          _summaryCard(
-                            title: 'In Progress',
-                            value:
-                                inProgressComplaints
-                                    .toString(),
-                            icon:
-                                Icons.autorenew,
-                            color: Colors.blue,
+                          const Text(
+                            'Complaints Summary',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
 
-                          const SizedBox(width: 10),
+                          const SizedBox(height: 6),
 
-                          _summaryCard(
-                            title: 'Resolved',
-                            value:
-                                resolvedComplaints
-                                    .toString(),
-                            icon:
-                                Icons.task_alt,
-                            color: Colors.green,
+                          Text(
+                            _reportType == 'Monthly'
+                                ? '${_months[_selectedMonth - 1]} $_selectedYear'
+                                : 'Year $_selectedYear',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ==========================================
+                          // TOTAL + PENDING
+                          // ==========================================
+                          Row(
+                            children: [
+                              _summaryCard(
+                                title: 'Total Complaints',
+                                value: totalComplaints.toString(),
+                                icon: Icons.report_problem,
+                                color: Colors.red,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Pending',
+                                value: pendingComplaints.toString(),
+                                icon: Icons.pending,
+                                color: Colors.orange,
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          // ==========================================
+                          // IN PROGRESS + RESOLVED
+                          // ==========================================
+                          Row(
+                            children: [
+                              _summaryCard(
+                                title: 'In Progress',
+                                value: inProgressComplaints.toString(),
+                                icon: Icons.autorenew,
+                                color: Colors.blue,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Resolved',
+                                value: resolvedComplaints.toString(),
+                                icon: Icons.task_alt,
+                                color: Colors.green,
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                    ],
-                  );
-                },
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-            ),
-            ),
         ),
       ),
 
       // ========================================================
       // BOTTOM NAVIGATION
       // ========================================================
-
       bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(20),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           currentIndex: 0,
@@ -1039,13 +1043,11 @@ class _TellerDashboardState extends State<TellerDashboard>
               const ManageBillsScreen(),
               const GenerateReportScreen(),
               const ManageComplaintsScreen(),
+              const StaffProfileScreen(role: 'Teller', userTypeValue: 'teller'),
             ];
 
             if (index != 0) {
-              Navigator.push(
-                context,
-                smoothPageRoute(destinations[index]),
-              );
+              Navigator.push(context, smoothPageRoute(destinations[index]));
             }
           },
 
@@ -1068,6 +1070,11 @@ class _TellerDashboardState extends State<TellerDashboard>
             BottomNavigationBarItem(
               icon: Icon(Icons.manage_accounts),
               label: 'Complaints',
+            ),
+
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              label: 'Profile',
             ),
           ],
         ),

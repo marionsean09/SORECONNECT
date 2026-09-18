@@ -92,6 +92,8 @@ class BillBreakdownView extends StatelessWidget {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   children: [
+                    _lineItemHeaderRow(),
+                    const SizedBox(height: 4),
                     for (final section in breakdown.sections) ...[
                       if (section.title != null && section.title!.isNotEmpty) ...[
                         const SizedBox(height: 6),
@@ -175,6 +177,54 @@ class BillBreakdownView extends StatelessWidget {
           Text(value,
               style: const TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _lineItemHeaderRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 5,
+            child: Text(
+              'Charges',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade500,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              'Rate/kWh',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade500,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              'Amount',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade500,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
         ],
       ),
     );

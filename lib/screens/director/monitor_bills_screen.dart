@@ -560,20 +560,6 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   }
 
   // ============================================================
-  // FORMAT DATE
-  // ============================================================
-
-  String _formatDate(DateTime? date) {
-    if (date == null || date.millisecondsSinceEpoch == 0) {
-      return 'Date not available';
-    }
-
-    return '${date.month.toString().padLeft(2, '0')}/'
-        '${date.day.toString().padLeft(2, '0')}/'
-        '${date.year}';
-  }
-
-  // ============================================================
   // BUILD
   // ============================================================
 
@@ -1111,12 +1097,6 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                         final consumption =
                             (data['consumption'] as num?)?.toDouble() ?? 0.0;
 
-                        // DATE
-
-                        final billDate = _getBillDate(data);
-
-                        final dateText = _formatDate(billDate);
-
                         // LOCATION
 
                         final location = locations[billDoc.id] ?? {};
@@ -1127,16 +1107,10 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                                 .trim() ??
                             '';
 
-                        final barangay =
-                            location['barangay']?.toString().trim() ?? '';
-
-                        final address =
-                            location['address']?.toString().trim() ?? '';
-
-                        // BILL CARD
+                        // BILL CARD (compact, tap for detail)
 
                         return InkWell(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                           onTap: () => _showBillDetail(
                             context,
                             data: data,
@@ -1147,218 +1121,109 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                             totalAmount: totalAmount,
                             municipality: municipality,
                           ),
-                          child: Card(
-                          margin: const EdgeInsets.only(
-                            bottom: 12,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.grey.shade200,
+                              ),
+                            ),
                             child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // STATUS ICON
-
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Icon(
-                                    isPaid
-                                        ? Icons.check_circle
-                                        : isCancelled
-                                            ? Icons.cancel
-                                            : Icons.pending,
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
                                     color: statusColor,
-                                    size: 32,
+                                    shape: BoxShape.circle,
                                   ),
                                 ),
-
                                 const SizedBox(width: 12),
-
-                                // BILL INFORMATION
-
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      if (ticketNumber.isNotEmpty) ...[
-                                        TicketBadge(
-                                          ticketNumber: ticketNumber,
-                                          color: Theme.of(
-                                            context,
-                                          ).primaryColor,
-                                        ),
-                                        const SizedBox(height: 8),
-                                      ],
-                                      Text(
-                                        data['consumerName'] ?? 'Unknown',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
+                                      Row(
+                                        children: [
+                                          if (ticketNumber
+                                              .isNotEmpty) ...[
+                                            TicketBadge(
+                                              ticketNumber: ticketNumber,
+                                              color: Theme.of(
+                                                context,
+                                              ).primaryColor,
+                                            ),
+                                            const SizedBox(width: 6),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              data['consumerName'] ??
+                                                  'Unknown',
+                                              maxLines: 1,
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontWeight:
+                                                    FontWeight.w600,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-
-                                      const SizedBox(height: 8),
-
+                                      const SizedBox(height: 3),
                                       Text(
-                                        'Account: '
-                                        '${data['accountNumber'] ?? 'N/A'}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-
-                                      const SizedBox(height: 4),
-
-                                      Text(
-                                        'Period: '
+                                        '${data['accountNumber'] ?? 'N/A'} · '
                                         '${data['billingPeriod'] ?? 'N/A'}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                      ),
-
-                                      const SizedBox(height: 6),
-
-                                      // LOCATION DISPLAY
-
-                                      if (barangay.isNotEmpty ||
-                                          municipality.isNotEmpty)
-                                        Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Icon(
-                                              Icons.location_on,
-                                              size: 16,
-                                              color: Colors.orange,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Expanded(
-                                              child: Text(
-                                                barangay.isNotEmpty &&
-                                                        municipality.isNotEmpty
-                                                    ? '$barangay, $municipality'
-                                                    : barangay.isNotEmpty
-                                                    ? barangay
-                                                    : municipality,
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      else if (address.isNotEmpty)
-                                        Row(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Icon(
-                                              Icons.location_on,
-                                              size: 16,
-                                              color: Colors.orange,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Expanded(
-                                              child: Text(
-                                                address,
-                                                maxLines: 2,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      else
-                                        const Row(
-                                          children: [
-                                            Icon(
-                                              Icons.location_off,
-                                              size: 16,
-                                              color: Colors.grey,
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              'Location not available',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-
-                                      const SizedBox(height: 6),
-
-                                      Text(
-                                        'Generated: $dateText',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                          fontSize: 12,
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          color: Colors.grey.shade600,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-
-                                const SizedBox(width: 12),
-
-                                // AMOUNT + STATUS
-
-                                SizedBox(
-                                  width: 105,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        '₱${totalAmount.toStringAsFixed(2)}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '₱${totalAmount.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14.5,
                                       ),
-
-                                      const SizedBox(height: 10),
-
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: statusColor,
-                                          borderRadius:
-                                              BorderRadius.circular(5),
-                                        ),
-                                        child: Text(
-                                          statusText,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      statusText,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: statusColor,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 18,
+                                  color: Colors.grey.shade400,
                                 ),
                               ],
                             ),
                           ),
-                        ),
                         );
                       },
                     );
@@ -1427,6 +1292,11 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                   Text(
                     'Account: ${data['accountNumber'] ?? 'N/A'} · '
                     '${data['billingPeriod'] ?? 'N/A'}',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Meter No: ${data['meterNumber'] ?? 'N/A'}',
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 16),

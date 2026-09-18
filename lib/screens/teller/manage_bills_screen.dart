@@ -234,6 +234,14 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
     );
   }
 
+  String _getMeterNumber(Map<String, dynamic> data) {
+    return _stringValue(
+      data,
+      ['meterNumber', 'meterNo', 'meter_number'],
+      fallback: 'N/A',
+    );
+  }
+
   String _getBarangay(Map<String, dynamic> data) {
     return _stringValue(data, ['barangay', 'baranggay']);
   }
@@ -873,17 +881,8 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
 
     final status = _getDisplayStatus(data);
     final statusColor = _getStatusColor(status);
-    final statusIcon = _getStatusIcon(status);
 
     final amount = _doubleValue(data, 'totalAmount');
-    final consumption = _doubleValue(data, 'consumption');
-    final previousReading = _doubleValue(data, 'previousReading');
-    final currentReading = _doubleValue(data, 'currentReading');
-
-    final rawBreakdown = data['breakdown'];
-    final BillBreakdown? breakdown = rawBreakdown is Map
-        ? BillBreakdown.fromMap(Map<String, dynamic>.from(rawBreakdown))
-        : null;
 
     final billingPeriod = _stringValue(
       data,
@@ -891,224 +890,381 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
       fallback: 'N/A',
     );
 
-    final paymentStartDate =
-        _parseDate(data['paymentStartDate']);
-    final dueDate = _parseDate(data['dueDate']);
-    final isUpdating = _updatingBillId == doc.id;
-    final ticketNumber = BillModel.ticketNumberFor(data, doc.id);
-
-    return Card(
-      elevation: 3,
-      shadowColor: primaryOrange.withValues(alpha: 0.25),
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _showBillDetailSheet(doc),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
           children: [
-            Row(
-              children: [
-                if (ticketNumber.isNotEmpty) ...[
-                  TicketBadge(
-                    ticketNumber: ticketNumber,
-                    color: primaryOrange,
-                  ),
-                  const SizedBox(width: 6),
-                ],
-                IconButton(
-                  icon: const Icon(Icons.ios_share),
-                  tooltip: 'Export bill',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => showExportBillOptions(
-                    context,
-                    bill: data,
-                    breakdown: breakdown,
-                    ticketNumber: ticketNumber.isNotEmpty
-                        ? ticketNumber
-                        : doc.id,
-                  ),
-                ),
-              ],
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: statusColor,
+                shape: BoxShape.circle,
+              ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _getConsumerName(data),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(statusIcon, size: 14, color: statusColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        status,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text('Account Number: ${_getAccountNumber(data)}'),
-            Text('Billing Period: $billingPeriod'),
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.location_on_outlined,
-                    size: 17,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(width: 5),
-                  const Text(
-                    'Location: ',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      _getLocationText(data),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 24),
-            if (breakdown != null) ...[
-              BillBreakdownView(
-                breakdown: breakdown,
-                previousReading: previousReading,
-                currentReading: currentReading,
-                consumption: consumption,
-                municipality: _getMunicipality(data),
-              ),
-              const SizedBox(height: 10),
-            ] else ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Consumption',
-                    style: TextStyle(color: Colors.grey),
-                  ),
                   Text(
-                    '${consumption.toStringAsFixed(2)} kWh',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Total Amount',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  Text(
-                    '₱${amount.toStringAsFixed(2)}',
+                    _getConsumerName(data),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${_getAccountNumber(data)} · $billingPeriod',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.grey.shade600,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-            ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                const Text(
-                  'Payment Start',
-                  style: TextStyle(color: Colors.grey),
-                ),
                 Text(
-                  paymentStartDate != null
-                      ? '${paymentStartDate.month}/'
-                          '${paymentStartDate.day}/'
-                          '${paymentStartDate.year}'
-                      : 'N/A',
+                  '₱${amount.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14.5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Due Date',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                Text(
-                  dueDate != null
-                      ? '${dueDate.month}/${dueDate.day}/${dueDate.year}'
-                      : 'N/A',
-                ),
-              ],
-            ),
-            const SizedBox(height: 15),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: primaryOrange,
-                  side: BorderSide(
-                    color: primaryOrange.withValues(alpha: 0.6),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: isUpdating
-                    ? null
-                    : () => _showStatusDialog(doc.id, _getFirestoreStatus(data)),
-                icon: isUpdating
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.rule_outlined),
-                label: Text(isUpdating ? 'Updating...' : 'Edit Status'),
-              ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: Colors.grey.shade400,
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ============================================================
+  // BILL DETAIL SHEET
+  // ============================================================
+
+  void _showBillDetailSheet(QueryDocumentSnapshot doc) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.78,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (sheetContext, scrollController) {
+            final data = doc.data() as Map<String, dynamic>;
+
+            final status = _getDisplayStatus(data);
+            final statusColor = _getStatusColor(status);
+            final statusIcon = _getStatusIcon(status);
+
+            final amount = _doubleValue(data, 'totalAmount');
+            final consumption = _doubleValue(data, 'consumption');
+            final previousReading =
+                _doubleValue(data, 'previousReading');
+            final currentReading =
+                _doubleValue(data, 'currentReading');
+
+            final rawBreakdown = data['breakdown'];
+            final BillBreakdown? breakdown = rawBreakdown is Map
+                ? BillBreakdown.fromMap(
+                    Map<String, dynamic>.from(rawBreakdown),
+                  )
+                : null;
+
+            final billingPeriod = _stringValue(
+              data,
+              ['billingPeriod'],
+              fallback: 'N/A',
+            );
+
+            final paymentStartDate =
+                _parseDate(data['paymentStartDate']);
+            final dueDate = _parseDate(data['dueDate']);
+            final isUpdating = _updatingBillId == doc.id;
+            final ticketNumber =
+                BillModel.ticketNumberFor(data, doc.id);
+
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: primaryOrange,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.ios_share),
+                        tooltip: 'Export bill',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => showExportBillOptions(
+                          sheetContext,
+                          bill: data,
+                          breakdown: breakdown,
+                          ticketNumber: ticketNumber.isNotEmpty
+                              ? ticketNumber
+                              : doc.id,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _getConsumerName(data),
+                          style: const TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              statusIcon,
+                              size: 14,
+                              color: statusColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              status,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Account: ${_getAccountNumber(data)} · '
+                    '$billingPeriod',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Meter No: ${_getMeterNumber(data)}',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 17,
+                        color: Colors.orange,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          _getLocationText(data),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 28),
+                  if (breakdown != null) ...[
+                    BillBreakdownView(
+                      breakdown: breakdown,
+                      previousReading: previousReading,
+                      currentReading: currentReading,
+                      consumption: consumption,
+                      municipality: _getMunicipality(data),
+                      initiallyExpanded: true,
+                    ),
+                    const SizedBox(height: 10),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Consumption',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        Text(
+                          '${consumption.toStringAsFixed(2)} kWh',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Amount',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                        Text(
+                          '₱${amount.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Payment Start',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      Text(
+                        paymentStartDate != null
+                            ? '${paymentStartDate.month}/'
+                                '${paymentStartDate.day}/'
+                                '${paymentStartDate.year}'
+                            : 'N/A',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Due Date',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      Text(
+                        dueDate != null
+                            ? '${dueDate.month}/${dueDate.day}/'
+                                '${dueDate.year}'
+                            : 'N/A',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: primaryOrange,
+                        side: BorderSide(
+                          color: primaryOrange.withValues(alpha: 0.6),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: isUpdating
+                          ? null
+                          : () {
+                              Navigator.of(sheetContext).pop();
+                              _showStatusDialog(
+                                doc.id,
+                                _getFirestoreStatus(data),
+                              );
+                            },
+                      icon: isUpdating
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.rule_outlined),
+                      label: Text(
+                        isUpdating ? 'Updating...' : 'Edit Status',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

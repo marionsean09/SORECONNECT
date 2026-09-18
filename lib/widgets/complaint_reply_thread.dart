@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:soreconnect/services/complaint_services.dart';
@@ -85,14 +86,117 @@ class _ComplaintReplyThreadState extends State<ComplaintReplyThread> {
     }
   }
 
-  Widget _buildBubble(Map<String, dynamic> data) {
+  Future<void> _showEditReplyDialog(
+    String replyId,
+    String currentMessage,
+  ) async {
+    final controller = TextEditingController(text: currentMessage);
+    bool saving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text(
+                'Edit Reply',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 1,
+                maxLines: 5,
+                enabled: !saving,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _colorForRole(
+                      widget.currentSenderRole,
+                    ),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final text = controller.text.trim();
+
+                          if (text.isEmpty) return;
+
+                          setDialogState(() => saving = true);
+
+                          try {
+                            await _complaintService.updateReply(
+                              complaintId: widget.complaintId,
+                              replyId: replyId,
+                              message: text,
+                            );
+
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          } catch (e) {
+                            setDialogState(() => saving = false);
+
+                            if (!dialogContext.mounted) return;
+
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                backgroundColor: Colors.red,
+                                content: Text('Failed to update reply: $e'),
+                              ),
+                            );
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  Widget _buildBubble(String replyId, Map<String, dynamic> data) {
     final senderRole = (data['senderRole'] ?? '').toString();
     final senderName = (data['senderName'] ?? '').toString();
+    final senderId = (data['senderId'] ?? '').toString();
     final message = (data['message'] ?? '').toString();
     final createdAt = data['createdAt'];
+    final editedAt = data['editedAt'];
 
-    final isMine = senderRole == widget.currentSenderRole &&
-        senderName == widget.currentSenderName;
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isMine = senderId.isNotEmpty && senderId == currentUid;
 
     String timeText = '';
 
@@ -105,45 +209,52 @@ class _ComplaintReplyThreadState extends State<ComplaintReplyThread> {
     return Align(
       alignment:
           isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 8,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$senderName · $senderRole',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              message,
-              style: const TextStyle(fontSize: 14, height: 1.3),
-            ),
-            if (timeText.isNotEmpty) ...[
-              const SizedBox(height: 4),
+      child: GestureDetector(
+        onLongPress:
+            isMine ? () => _showEditReplyDialog(replyId, message) : null,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 320),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 8,
+          ),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                timeText,
+                '$senderName · $senderRole',
                 style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey.shade600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: color,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                message,
+                style: const TextStyle(fontSize: 14, height: 1.3),
+              ),
+              if (timeText.isNotEmpty || editedAt != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  editedAt != null
+                      ? '$timeText${timeText.isNotEmpty ? ' · ' : ''}edited'
+                      : timeText,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey.shade600,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -213,7 +324,7 @@ class _ComplaintReplyThreadState extends State<ComplaintReplyThread> {
               itemCount: docs.length,
               itemBuilder: (context, index) {
                 final data = docs[index].data() as Map<String, dynamic>;
-                return _buildBubble(data);
+                return _buildBubble(docs[index].id, data);
               },
             );
           },

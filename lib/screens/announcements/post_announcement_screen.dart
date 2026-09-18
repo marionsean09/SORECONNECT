@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,18 @@ import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/services/announcement_service.dart';
 
 class PostAnnouncementScreen extends StatefulWidget {
-  const PostAnnouncementScreen({super.key});
+  const PostAnnouncementScreen({
+    super.key,
+    this.editAnnouncementId,
+    this.editData,
+  });
+
+  // When both are set, this screen edits an existing announcement
+  // instead of creating a new one.
+  final String? editAnnouncementId;
+  final Map<String, dynamic>? editData;
+
+  bool get isEditing => editAnnouncementId != null && editData != null;
 
   @override
   State<PostAnnouncementScreen> createState() =>
@@ -123,11 +135,77 @@ class _PostAnnouncementScreenState
   XFile? _pickedImage;
   Uint8List? _pickedImageBytes;
 
+  // When editing, the announcement's current photo (if any), shown
+  // until the director picks a new one or removes it.
+  String? _existingImageBase64;
+  bool _imageExplicitlyRemoved = false;
+
   // ============================================================
   // GENERAL STATE
   // ============================================================
 
   bool _isPosting = false;
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.isEditing) {
+      _prefillFromEditData(widget.editData!);
+    }
+  }
+
+  void _prefillFromEditData(Map<String, dynamic> data) {
+    _titleController.text = (data['title'] ?? '').toString();
+    _contentController.text = (data['content'] ?? '').toString();
+
+    _selectedType = (data['type'] ?? 'advisory').toString();
+
+    _coverageType = (data['coverageType'] ?? 'all').toString();
+
+    _selectedMunicipalities = List<String>.from(
+      (data['municipalities'] as List?)?.map((e) => e.toString()) ?? [],
+    );
+
+    _selectedBarangays = List<String>.from(
+      (data['barangays'] as List?)?.map((e) => e.toString()) ?? [],
+    );
+
+    final scheduledDate = data['scheduledDate'];
+    if (scheduledDate is Timestamp) {
+      final dt = scheduledDate.toDate();
+      _selectedStartDate = dt;
+      _selectedStartTime = TimeOfDay.fromDateTime(dt);
+    }
+
+    final scheduledEndDate = data['scheduledEndDate'];
+    if (scheduledEndDate is Timestamp) {
+      final dt = scheduledEndDate.toDate();
+      _selectedEndDate = dt;
+      _selectedEndTime = TimeOfDay.fromDateTime(dt);
+    }
+
+    final disconnectionDate = data['disconnectionDate'];
+    if (disconnectionDate is Timestamp) {
+      final dt = disconnectionDate.toDate();
+      _selectedDisconnectionDate = dt;
+      _selectedDisconnectionTime = TimeOfDay.fromDateTime(dt);
+    }
+
+    final readingDate = data['readingDate'];
+    if (readingDate is Timestamp) {
+      _selectedReadingDate = readingDate.toDate();
+    }
+
+    final imageBase64 = data['imageBase64'];
+    if (imageBase64 is String && imageBase64.isNotEmpty) {
+      _existingImageBase64 = imageBase64;
+    }
+  }
 
   // ============================================================
   // HELPERS
@@ -547,6 +625,11 @@ class _PostAnnouncementScreenState
     setState(() {
       _pickedImage = null;
       _pickedImageBytes = null;
+
+      if (_existingImageBase64 != null) {
+        _existingImageBase64 = null;
+        _imageExplicitlyRemoved = true;
+      }
     });
   }
 
@@ -725,6 +808,37 @@ class _PostAnnouncementScreenState
                 borderRadius: BorderRadius.circular(10),
                 child: Image.memory(
                   _pickedImageBytes!,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: _removeImage,
+                  child: const CircleAvatar(
+                    radius: 15,
+                    backgroundColor: Colors.black54,
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          )
+        else if (_existingImageBase64 != null &&
+            _existingImageBase64!.isNotEmpty)
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.memory(
+                  base64Decode(_existingImageBase64!),
                   height: 180,
                   width: double.infinity,
                   fit: BoxFit.cover,
@@ -1364,6 +1478,45 @@ class _PostAnnouncementScreenState
       // SAVE THROUGH ANNOUNCEMENT SERVICE
       // ========================================================
 
+      if (widget.isEditing) {
+        await _announcementService.updateAnnouncement(
+          announcementId: widget.editAnnouncementId!,
+          title: announcementData['title'] as String,
+          content: announcementData['content'] as String,
+          type: announcementData['type'] as String,
+          typeLabel: announcementData['typeLabel'] as String,
+          coverageType: announcementData['coverageType'] as String,
+          municipalities:
+              announcementData['municipalities'] as List<String>,
+          barangays: announcementData['barangays'] as List<String>,
+          province: announcementData['province'] as String,
+          district: announcementData['district'] as String,
+          coveredArea: announcementData['coveredArea'] as String?,
+          scheduledDate: scheduledDateTime,
+          scheduledEndDate: scheduledEndDateTime,
+          startTime: announcementData['startTime'] as String?,
+          endTime: announcementData['endTime'] as String?,
+          disconnectionDate: disconnectionDateTime,
+          disconnectionTime:
+              announcementData['disconnectionTime'] as String?,
+          readingDate: readingDate,
+          image: _pickedImage,
+          removeImage: _imageExplicitlyRemoved,
+        );
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Announcement updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.of(context).pop(true);
+        return;
+      }
+
       await _announcementService.postAnnouncement(
         title: announcementData['title'] as String,
         content: announcementData['content'] as String,
@@ -1461,7 +1614,9 @@ class _PostAnnouncementScreenState
           .showSnackBar(
         SnackBar(
           content: Text(
-            'Error posting announcement: $e',
+            widget.isEditing
+                ? 'Error updating announcement: $e'
+                : 'Error posting announcement: $e',
           ),
           backgroundColor: Colors.red,
         ),
@@ -1507,8 +1662,10 @@ class _PostAnnouncementScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Post Announcement',
+        title: Text(
+          widget.isEditing
+              ? 'Edit Announcement'
+              : 'Post Announcement',
         ),
         backgroundColor:
             Theme.of(context).primaryColor,
@@ -1756,10 +1913,12 @@ class _PostAnnouncementScreenState
                                 2,
                           ),
                         )
-                      : const Text(
-                          'POST ANNOUNCEMENT',
+                      : Text(
+                          widget.isEditing
+                              ? 'UPDATE ANNOUNCEMENT'
+                              : 'POST ANNOUNCEMENT',
                           style:
-                              TextStyle(
+                              const TextStyle(
                             fontWeight:
                                 FontWeight
                                     .bold,

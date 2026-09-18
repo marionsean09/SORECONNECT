@@ -137,4 +137,75 @@ class AnnouncementService {
       'status': status,
     });
   }
+
+  // ==================================================================
+  // UPDATE ANNOUNCEMENT
+  // Lets the director who posted an announcement fix its content
+  // later. `postedBy`, `datePosted`, and `status` are intentionally
+  // left untouched — only the editable content changes.
+  // ==================================================================
+
+  Future<void> updateAnnouncement({
+    required String announcementId,
+    required String title,
+    required String content,
+    required String type,
+    required String typeLabel,
+    required String coverageType,
+    List<String> municipalities = const [],
+    List<String> barangays = const [],
+    required String province,
+    required String district,
+    String? coveredArea,
+    DateTime? scheduledDate,
+    DateTime? scheduledEndDate,
+    String? startTime,
+    String? endTime,
+    DateTime? disconnectionDate,
+    String? disconnectionTime,
+    DateTime? readingDate,
+    XFile? image,
+    bool removeImage = false,
+  }) async {
+    final Map<String, dynamic> data = {
+      'title': title,
+      'content': content,
+      'type': type,
+      'typeLabel': typeLabel,
+      'coverageType': coverageType,
+      'municipalities': municipalities,
+      'barangays': barangays,
+      'province': province,
+      'district': district,
+      'coveredArea': coveredArea,
+      'scheduledDate':
+          scheduledDate != null ? Timestamp.fromDate(scheduledDate) : null,
+      'scheduledEndDate': scheduledEndDate != null
+          ? Timestamp.fromDate(scheduledEndDate)
+          : null,
+      'startTime': startTime,
+      'endTime': endTime,
+      'disconnectionDate': disconnectionDate != null
+          ? Timestamp.fromDate(disconnectionDate)
+          : null,
+      'disconnectionTime': disconnectionTime,
+      'readingDate':
+          readingDate != null ? Timestamp.fromDate(readingDate) : null,
+      'editedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (image != null) {
+      final encoded = await encodeImageToBase64(image);
+      data['imageBase64'] = encoded.base64;
+      data['imageMimeType'] = encoded.mimeType;
+    } else if (removeImage) {
+      data['imageBase64'] = null;
+      data['imageMimeType'] = null;
+    }
+
+    await _firestore
+        .collection('announcements')
+        .doc(announcementId)
+        .update(data);
+  }
 }

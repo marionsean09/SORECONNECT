@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:soreconnect/utils/page_transitions.dart';
+
 class GenerateReportScreen extends StatefulWidget {
   const GenerateReportScreen({super.key});
 
@@ -10,11 +12,50 @@ class GenerateReportScreen extends StatefulWidget {
 }
 
 class _GenerateReportScreenState
-    extends State<GenerateReportScreen> {
+    extends State<GenerateReportScreen>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
   bool _isLoading = false;
+
+  // ============================================================
+  // ENTRANCE ANIMATION
+  // ============================================================
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  bool _generatePressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: pageTransitionCurve,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(_fadeAnimation);
+
+    _entranceController.forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
 
   String _reportType = "Monthly";
 
@@ -211,11 +252,15 @@ class _GenerateReportScreenState
             horizontal: 16,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F7F7),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFFE2E2E2),
-            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Row(
             mainAxisSize:
@@ -1054,6 +1099,7 @@ class _GenerateReportScreenState
         ),
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
 
       // ========================================================
@@ -1063,7 +1109,11 @@ class _GenerateReportScreenState
       body: Padding(
         padding: const EdgeInsets.all(18),
 
-        child: Column(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: Column(
           children: [
 
             // ==================================================
@@ -1155,7 +1205,23 @@ class _GenerateReportScreenState
             // GENERATE BUTTON
             // ==================================================
 
-            SizedBox(
+            Listener(
+              onPointerDown: (_) {
+                if (!_isLoading) {
+                  setState(() => _generatePressed = true);
+                }
+              },
+              onPointerUp: (_) => setState(
+                () => _generatePressed = false,
+              ),
+              onPointerCancel: (_) => setState(
+                () => _generatePressed = false,
+              ),
+              child: AnimatedScale(
+                scale: _generatePressed ? 0.97 : 1.0,
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOut,
+                child: SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
@@ -1170,11 +1236,12 @@ class _GenerateReportScreenState
                       Colors.orange,
                   foregroundColor:
                       Colors.white,
+                  elevation: 0,
                   shape:
                       RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(
-                      10,
+                      14,
                     ),
                   ),
                 ),
@@ -1199,8 +1266,11 @@ class _GenerateReportScreenState
                             style: TextStyle(
                               fontWeight:
                                   FontWeight.bold,
+                              letterSpacing: 0.3,
                             ),
                           ),
+              ),
+                ),
               ),
             ),
 
@@ -1296,6 +1366,13 @@ class _GenerateReportScreenState
 
                     Card(
                       elevation: 2,
+                      shadowColor:
+                          Colors.orange.withValues(alpha: 0.2),
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(16),
+                      ),
                       child: Padding(
                         padding:
                             const EdgeInsets.all(
@@ -1444,6 +1521,13 @@ class _GenerateReportScreenState
 
                     Card(
                       elevation: 2,
+                      shadowColor:
+                          Colors.orange.withValues(alpha: 0.2),
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(16),
+                      ),
                       child: Padding(
                         padding:
                             const EdgeInsets.all(
@@ -1523,6 +1607,13 @@ class _GenerateReportScreenState
 
                     Card(
                       elevation: 2,
+                      shadowColor:
+                          Colors.orange.withValues(alpha: 0.2),
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(16),
+                      ),
                       child: Padding(
                         padding:
                             const EdgeInsets.all(
@@ -1658,7 +1749,9 @@ class _GenerateReportScreenState
               ),
           ],
         ),
-      ),
+            ),
+          ),
+        ),
     );
   }
 }

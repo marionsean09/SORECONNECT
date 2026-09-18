@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import 'package:soreconnect/screens/announcements/post_announcement_screen.dart';
 import 'package:soreconnect/widgets/image_viewer.dart';
 
 // Normalizes a Firestore field that may be a List (current format)
@@ -693,6 +695,8 @@ class _ViewAnnouncementsScreenState
                                       AnnouncementDetailsScreen(
                                 announcement:
                                     data,
+                                docId:
+                                    docs[index].id,
                               ),
                             ),
                           );
@@ -980,6 +984,8 @@ class _ViewAnnouncementsScreenState
                                                 AnnouncementDetailsScreen(
                                           announcement:
                                               data,
+                                          docId:
+                                              docs[index].id,
                                         ),
                                       ),
                                     );
@@ -1019,10 +1025,12 @@ class _ViewAnnouncementsScreenState
 class AnnouncementDetailsScreen
     extends StatelessWidget {
   final Map<String, dynamic> announcement;
+  final String docId;
 
   const AnnouncementDetailsScreen({
     super.key,
     required this.announcement,
+    required this.docId,
   });
 
   // ================================================================
@@ -1594,6 +1602,10 @@ class AnnouncementDetailsScreen
       announcement['datePosted'],
     );
 
+    final isOwner = announcement['postedBy'] != null &&
+        announcement['postedBy'] ==
+            FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -1605,6 +1617,28 @@ class AnnouncementDetailsScreen
         foregroundColor:
             Colors.white,
         elevation: 0,
+        actions: [
+          if (isOwner)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit Announcement',
+              onPressed: () async {
+                final updated = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostAnnouncementScreen(
+                      editAnnouncementId: docId,
+                      editData: announcement,
+                    ),
+                  ),
+                );
+
+                if (updated == true && context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+            ),
+        ],
       ),
 
       body:
@@ -1737,7 +1771,7 @@ class AnnouncementDetailsScreen
                       'MMMM dd, yyyy • hh:mm a',
                     ).format(
                       postedDate,
-                    )}',
+                    )}${announcement['editedAt'] != null ? ' (edited)' : ''}',
                     style:
                         const TextStyle(
                       color:

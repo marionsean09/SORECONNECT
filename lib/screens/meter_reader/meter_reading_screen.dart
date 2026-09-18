@@ -6,8 +6,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/models/meter_reading_model.dart';
+import 'package:soreconnect/models/rate_model.dart';
 import 'package:soreconnect/services/rate_service.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
+import 'package:soreconnect/widgets/bill_breakdown_view.dart';
 
 class MeterReadingScreen extends StatefulWidget {
   const MeterReadingScreen({super.key});
@@ -26,7 +29,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final RateService _rateService = RateService();
 
-  StreamSubscription<double>? _rateSub;
+  StreamSubscription<RateModel>? _rateSub;
 
   // ============================================================
   // CONTROLLERS
@@ -38,19 +41,25 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   final TextEditingController _currentReadingController =
       TextEditingController();
 
+  final TextEditingController _interestController =
+      TextEditingController(text: '0');
+
+  final TextEditingController _adjustmentsController =
+      TextEditingController(text: '0');
+
   // ============================================================
   // STATE
   // ============================================================
 
   bool _isLoading = false;
 
-  double _currentRate = 12.0;
+  RateModel _currentRate = RateModel.defaultRate();
 
   Map<String, dynamic>? _consumer;
 
   double _previousReading = 0;
   double _consumption = 0;
-  double _computedAmount = 0;
+  BillBreakdown? _breakdown;
 
   // ============================================================
   // LOCATION
@@ -68,7 +77,6 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   // ============================================================
 
   static const Color _primaryOrange = Color(0xFFFF9800);
-  static const Color _darkOrange = Color(0xFFF57C00);
 
   static const Color _backgroundColor =
       Color(0xFFFFF8E7);
@@ -148,6 +156,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   void dispose() {
     _accountNumberController.dispose();
     _currentReadingController.dispose();
+    _interestController.dispose();
+    _adjustmentsController.dispose();
 
     _rateSub?.cancel();
     _entranceController.dispose();
@@ -226,7 +236,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       _previousReading = 0;
       _consumption = 0;
-      _computedAmount = 0;
+      _breakdown = null;
 
       _accountNumberController.clear();
       _currentReadingController.clear();
@@ -248,7 +258,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       _previousReading = 0;
       _consumption = 0;
-      _computedAmount = 0;
+      _breakdown = null;
 
       _accountNumberController.clear();
       _currentReadingController.clear();
@@ -291,7 +301,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       _previousReading = 0;
       _consumption = 0;
-      _computedAmount = 0;
+      _breakdown = null;
     });
 
     try {
@@ -545,6 +555,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   // COMPUTE BILL
   // ============================================================
 
+  double _parseNonNegative(String text) {
+    final value = double.tryParse(text.trim());
+    if (value == null || value < 0) return 0;
+    return value;
+  }
+
   void _computeBill({
     bool showError = true,
   }) {
@@ -556,7 +572,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       setState(() {
         _consumption = 0;
-        _computedAmount = 0;
+        _breakdown = null;
       });
 
       return;
@@ -570,7 +586,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       setState(() {
         _consumption = 0;
-        _computedAmount = 0;
+        _breakdown = null;
       });
 
       return;
@@ -581,7 +597,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
       setState(() {
         _consumption = 0;
-        _computedAmount = 0;
+        _breakdown = null;
       });
 
       if (showError) {
@@ -597,14 +613,18 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
     final consumption =
         current - _previousReading;
 
-    final amount =
-        consumption * _currentRate;
+    final breakdown = computeBillBreakdown(
+      rate: _currentRate,
+      consumption: consumption,
+      interest: _parseNonNegative(_interestController.text),
+      adjustments: _parseNonNegative(_adjustmentsController.text),
+    );
 
     if (!mounted) return;
 
     setState(() {
       _consumption = consumption;
-      _computedAmount = amount;
+      _breakdown = breakdown;
     });
   }
 
@@ -653,8 +673,17 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         currentReading -
             _previousReading;
 
-    final computedAmount =
-        consumption * _currentRate;
+    final breakdown = computeBillBreakdown(
+      rate: _currentRate,
+      consumption: consumption,
+      interest: _parseNonNegative(_interestController.text),
+      adjustments: _parseNonNegative(_adjustmentsController.text),
+    );
+
+    final computedAmount = breakdown.totalAmount;
+
+    final effectiveRate =
+        consumption > 0 ? computedAmount / consumption : 0.0;
 
     setState(() {
       _isLoading = true;
@@ -764,10 +793,13 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
             consumption,
 
         ratePerKwh:
-            _currentRate,
+            effectiveRate,
 
         computedAmount:
             computedAmount,
+
+        breakdown:
+            breakdown,
 
         billingPeriod:
             billingPeriod,
@@ -853,8 +885,9 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         "previousReading": _previousReading,
         "currentReading": currentReading,
         "consumption": consumption,
-        "ratePerKwh": _currentRate,
+        "ratePerKwh": effectiveRate,
         "totalAmount": computedAmount,
+        "breakdown": breakdown.toMap(),
         "billingPeriod": billingPeriod,
         "paymentStartDate": Timestamp.fromDate(paymentStartDate),
         "dueDate": Timestamp.fromDate(dueDate),
@@ -876,10 +909,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
         _previousReading = 0;
         _consumption = 0;
-        _computedAmount = 0;
+        _breakdown = null;
 
         _accountNumberController.clear();
         _currentReadingController.clear();
+        _interestController.text = '0';
+        _adjustmentsController.text = '0';
       });
     } catch (e) {
       final message = e
@@ -2388,11 +2423,6 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
             ),
 
             _buildSummaryRow(
-              "Rate per kWh",
-              "₱${_currentRate.toStringAsFixed(2)}",
-            ),
-
-            _buildSummaryRow(
               "Previous Reading",
               "${_previousReading.toStringAsFixed(2)} kWh",
             ),
@@ -2420,73 +2450,88 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
             ),
 
             // ==================================================
-            // ESTIMATED BILL
+            // INTEREST / ADJUSTMENTS (manual, one-off amounts)
             // ==================================================
 
-            Container(
-              width:
-                  double.infinity,
-
-              padding:
-                  const EdgeInsets.all(
-                16,
-              ),
-
-              decoration:
-                  BoxDecoration(
-                color:
-                    _lightOrange,
-
-                borderRadius:
-                    BorderRadius.circular(
-                  16,
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _interestController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (_) => _computeBill(showError: false),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      labelText: "Interest",
+                      prefixText: "₱ ",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
                 ),
-              ),
-
-              child:
-                  Row(
-                children: [
-                  const Icon(
-                    Icons.payments_outlined,
-                    color:
-                        _primaryOrange,
-                    size:
-                        30,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _adjustmentsController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (_) => _computeBill(showError: false),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      labelText: "Adjustments",
+                      prefixText: "₱ ",
+                      border: OutlineInputBorder(),
+                    ),
                   ),
+                ),
+              ],
+            ),
 
-                  const SizedBox(
-                    width: 12,
-                  ),
+            const SizedBox(
+              height: 16,
+            ),
 
-                  const Expanded(
-                    child:
-                        Text(
-                      "Estimated Bill",
-                      style:
-                          TextStyle(
-                        fontSize:
-                            16,
-                        fontWeight:
-                            FontWeight.bold,
+            // ==================================================
+            // ITEMIZED BILL BREAKDOWN
+            // ==================================================
+
+            if (_breakdown != null)
+              BillBreakdownView(
+                breakdown: _breakdown!,
+                previousReading: _previousReading,
+                currentReading: parsedCurrent ?? _previousReading,
+                consumption: _consumption,
+                municipality: municipality.isNotEmpty
+                    ? municipality
+                    : (_selectedMunicipality ?? ''),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _lightOrange,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.payments_outlined,
+                      color: _primaryOrange,
+                      size: 30,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        "Enter a current reading to see the itemized bill.",
+                        style: TextStyle(fontSize: 13),
                       ),
                     ),
-                  ),
-
-                  Text(
-                    "₱${_computedAmount.toStringAsFixed(2)}",
-                    style:
-                        const TextStyle(
-                      fontSize:
-                          22,
-                      fontWeight:
-                          FontWeight.bold,
-                      color:
-                          _darkOrange,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
             const SizedBox(
               height: 16,

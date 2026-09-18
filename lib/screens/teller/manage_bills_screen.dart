@@ -3,6 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/models/bill_model.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
+import 'package:soreconnect/utils/page_transitions.dart';
+import 'package:soreconnect/widgets/bill_breakdown_view.dart';
+import 'package:soreconnect/widgets/export_bill_sheet.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 // ============================================================
@@ -19,7 +23,8 @@ class ManageBillsScreen extends StatefulWidget {
   State<ManageBillsScreen> createState() => _ManageBillsScreenState();
 }
 
-class _ManageBillsScreenState extends State<ManageBillsScreen> {
+class _ManageBillsScreenState extends State<ManageBillsScreen>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -42,8 +47,39 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
       TextEditingController();
   String _searchQuery = '';
 
+  // ============================================================
+  // ENTRANCE ANIMATION
+  // ============================================================
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: pageTransitionCurve,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(_fadeAnimation);
+
+    _entranceController.forward();
+  }
+
   @override
   void dispose() {
+    _entranceController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -453,9 +489,15 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -506,9 +548,20 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: enabled ? Colors.grey.shade50 : Colors.grey.shade100,
+        color: enabled ? Colors.white : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: enabled
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
+        border: enabled
+            ? null
+            : Border.all(color: Colors.grey.shade300),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -577,7 +630,18 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         children: [
-          TextField(
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextField(
             controller: _searchController,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
@@ -603,8 +667,19 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
                 vertical: 12,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: primaryOrange,
+                  width: 1.5,
+                ),
               ),
             ),
             onChanged: (value) {
@@ -612,6 +687,7 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
                 _searchQuery = value;
               });
             },
+          ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -651,9 +727,15 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
                 height: 48,
                 width: 48,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.grey.shade300),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
                 child: PopupMenuButton<String>(
                   tooltip: 'Sort',
@@ -749,11 +831,22 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: primaryOrange.withValues(alpha: 0.10),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -828,8 +921,9 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
         Text(
           value,
           style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+            fontSize: 21,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
             color: color,
           ),
         ),
@@ -855,6 +949,13 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
 
     final amount = _doubleValue(data, 'totalAmount');
     final consumption = _doubleValue(data, 'consumption');
+    final previousReading = _doubleValue(data, 'previousReading');
+    final currentReading = _doubleValue(data, 'currentReading');
+
+    final rawBreakdown = data['breakdown'];
+    final BillBreakdown? breakdown = rawBreakdown is Map
+        ? BillBreakdown.fromMap(Map<String, dynamic>.from(rawBreakdown))
+        : null;
 
     final billingPeriod = _stringValue(
       data,
@@ -870,19 +971,42 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
 
     return Card(
       elevation: 3,
+      shadowColor: primaryOrange.withValues(alpha: 0.25),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
       margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (ticketNumber.isNotEmpty) ...[
-              TicketBadge(
-                ticketNumber: ticketNumber,
-                color: primaryOrange,
-              ),
-              const SizedBox(height: 10),
-            ],
+            Row(
+              children: [
+                if (ticketNumber.isNotEmpty) ...[
+                  TicketBadge(
+                    ticketNumber: ticketNumber,
+                    color: primaryOrange,
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                IconButton(
+                  icon: const Icon(Icons.ios_share),
+                  tooltip: 'Export bill',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => showExportBillOptions(
+                    context,
+                    bill: data,
+                    breakdown: breakdown,
+                    ticketNumber: ticketNumber.isNotEmpty
+                        ? ticketNumber
+                        : doc.id,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             Row(
               children: [
                 Expanded(
@@ -954,37 +1078,48 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
               ),
             ),
             const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Consumption',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                Text(
-                  '${consumption.toStringAsFixed(2)} kWh',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total Amount',
-                  style: TextStyle(color: Colors.grey),
-                ),
-                Text(
-                  '₱${amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
+            if (breakdown != null) ...[
+              BillBreakdownView(
+                breakdown: breakdown,
+                previousReading: previousReading,
+                currentReading: currentReading,
+                consumption: consumption,
+                municipality: _getMunicipality(data),
+              ),
+              const SizedBox(height: 10),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Consumption',
+                    style: TextStyle(color: Colors.grey),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
+                  Text(
+                    '${consumption.toStringAsFixed(2)} kWh',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Total Amount',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  Text(
+                    '₱${amount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1021,6 +1156,15 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
               width: double.infinity,
               height: 46,
               child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: primaryOrange,
+                  side: BorderSide(
+                    color: primaryOrange.withValues(alpha: 0.6),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
                 onPressed: isUpdating
                     ? null
                     : () => _showStatusDialog(doc.id, _getFirestoreStatus(data)),
@@ -1137,6 +1281,7 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
         title: const Text('Manage Bills'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
       body: Column(
         children: [
@@ -1173,13 +1318,20 @@ class _ManageBillsScreenState extends State<ManageBillsScreen> {
                   return _buildEmptyState();
                 }
 
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(15, 10, 15, 20),
-                  children: [
-                    _buildSummary(bills),
-                    const SizedBox(height: 14),
-                    ...bills.map(_buildBillCard),
-                  ],
+                return FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: ListView(
+                      padding:
+                          const EdgeInsets.fromLTRB(15, 10, 15, 20),
+                      children: [
+                        _buildSummary(bills),
+                        const SizedBox(height: 14),
+                        ...bills.map(_buildBillCard),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

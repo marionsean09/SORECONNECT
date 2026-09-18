@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
 
 class MeterReadingModel {
   final String readingId;
@@ -12,6 +13,10 @@ class MeterReadingModel {
 
   final double ratePerKwh;
   final double computedAmount;
+
+  // Itemized SORECO-style breakdown. Null for readings recorded
+  // before this feature existed.
+  final BillBreakdown? breakdown;
 
   final String billingPeriod;
 
@@ -31,6 +36,7 @@ class MeterReadingModel {
     required this.consumption,
     required this.ratePerKwh,
     required this.computedAmount,
+    this.breakdown,
     required this.billingPeriod,
     required this.status,
     required this.recordedBy,
@@ -48,6 +54,7 @@ class MeterReadingModel {
       'consumption': consumption,
       'ratePerKwh': ratePerKwh,
       'computedAmount': computedAmount,
+      if (breakdown != null) 'breakdown': breakdown!.toMap(),
       'billingPeriod': billingPeriod,
       'status': status,
       'recordedBy': recordedBy,
@@ -57,6 +64,8 @@ class MeterReadingModel {
 
   factory MeterReadingModel.fromMap(
       Map<String, dynamic> map) {
+    final rawBreakdown = map['breakdown'];
+
     return MeterReadingModel(
       readingId: map['readingId'] ?? '',
       consumerId: map['consumerId'] ?? '',
@@ -72,6 +81,9 @@ class MeterReadingModel {
           (map['ratePerKwh'] ?? 0).toDouble(),
       computedAmount:
           (map['computedAmount'] ?? 0).toDouble(),
+      breakdown: rawBreakdown is Map
+          ? BillBreakdown.fromMap(Map<String, dynamic>.from(rawBreakdown))
+          : null,
       billingPeriod:
           map['billingPeriod'] ?? '',
       status:

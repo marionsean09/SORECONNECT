@@ -6,6 +6,7 @@ import 'package:soreconnect/screens/teller/generate_reports_screen.dart';
 import 'package:soreconnect/screens/teller/manage_bills_screen.dart';
 import 'package:soreconnect/screens/complaints/manage_complaints_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
+import 'package:soreconnect/utils/page_transitions.dart';
 
 class TellerDashboard extends StatefulWidget {
   const TellerDashboard({super.key});
@@ -14,7 +15,8 @@ class TellerDashboard extends StatefulWidget {
   State<TellerDashboard> createState() => _TellerDashboardState();
 }
 
-class _TellerDashboardState extends State<TellerDashboard> {
+class _TellerDashboardState extends State<TellerDashboard>
+    with SingleTickerProviderStateMixin {
   static const Color _primaryGreen = Color(0xFF1B5E20);
   static const Color _accentGold = Color(0xFFDAA520);
 
@@ -40,15 +42,51 @@ class _TellerDashboardState extends State<TellerDashboard> {
     'December',
   ];
 
+  // ------------------------------------------------------------
+  // ENTRANCE ANIMATION
+  // ------------------------------------------------------------
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  bool _logoutPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: pageTransitionCurve,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(_fadeAnimation);
+
+    _entranceController.forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    super.dispose();
+  }
+
   Future<void> _logout() async {
     await _auth.signOut();
 
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-        ),
+        smoothPageRoute(const LoginScreen()),
       );
     }
   }
@@ -245,12 +283,17 @@ class _TellerDashboardState extends State<TellerDashboard> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: color.withValues(alpha: 0.14),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -265,8 +308,9 @@ class _TellerDashboardState extends State<TellerDashboard> {
             Text(
               value,
               style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
               ),
             ),
             const SizedBox(height: 4),
@@ -295,9 +339,25 @@ class _TellerDashboardState extends State<TellerDashboard> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
+          Listener(
+            onPointerDown: (_) => setState(
+              () => _logoutPressed = true,
+            ),
+            onPointerUp: (_) => setState(
+              () => _logoutPressed = false,
+            ),
+            onPointerCancel: (_) => setState(
+              () => _logoutPressed = false,
+            ),
+            child: AnimatedScale(
+              scale: _logoutPressed ? 0.88 : 1.0,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              child: IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: _logout,
+              ),
+            ),
           ),
         ],
       ),
@@ -310,7 +370,11 @@ class _TellerDashboardState extends State<TellerDashboard> {
             20,
             28,
           ),
-          child: Column(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
@@ -326,9 +390,14 @@ class _TellerDashboardState extends State<TellerDashboard> {
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+                      color: _primaryGreen.withValues(alpha: 0.10),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -644,7 +713,15 @@ class _TellerDashboardState extends State<TellerDashboard> {
                           color:
                               const Color(0xFFE8F5E9),
                           borderRadius:
-                              BorderRadius.circular(14),
+                              BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _primaryGreen
+                                  .withValues(alpha: 0.10),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
                         child: Row(
                           children: [
@@ -674,9 +751,10 @@ class _TellerDashboardState extends State<TellerDashboard> {
                                   '₱${totalRevenue.toStringAsFixed(2)}',
                                   style:
                                       const TextStyle(
-                                    fontSize: 24,
+                                    fontSize: 25,
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight.w800,
+                                    letterSpacing: -0.4,
                                     color:
                                         _primaryGreen,
                                   ),
@@ -937,6 +1015,8 @@ class _TellerDashboardState extends State<TellerDashboard> {
               ),
             ],
           ),
+            ),
+            ),
         ),
       ),
 
@@ -944,50 +1024,53 @@ class _TellerDashboardState extends State<TellerDashboard> {
       // BOTTOM NAVIGATION
       // ========================================================
 
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: 0,
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          currentIndex: 0,
+          elevation: 12,
 
-        onTap: (index) {
-          final destinations = [
-            const TellerDashboard(),
-            const ManageBillsScreen(),
-            const GenerateReportScreen(),
-            const ManageComplaintsScreen(),
-          ];
+          onTap: (index) {
+            final destinations = [
+              const TellerDashboard(),
+              const ManageBillsScreen(),
+              const GenerateReportScreen(),
+              const ManageComplaintsScreen(),
+            ];
 
-          if (index != 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    destinations[index],
-              ),
-            );
-          }
-        },
+            if (index != 0) {
+              Navigator.push(
+                context,
+                smoothPageRoute(destinations[index]),
+              );
+            }
+          },
 
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              label: 'Home',
+            ),
 
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long),
-            label: 'Bills',
-          ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long),
+              label: 'Bills',
+            ),
 
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assessment),
-            label: 'Reports',
-          ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assessment),
+              label: 'Reports',
+            ),
 
-          BottomNavigationBarItem(
-            icon: Icon(Icons.manage_accounts),
-            label: 'Complaints',
-          ),
-        ],
+            BottomNavigationBarItem(
+              icon: Icon(Icons.manage_accounts),
+              label: 'Complaints',
+            ),
+          ],
+        ),
       ),
     );
   }

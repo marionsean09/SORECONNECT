@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:soreconnect/models/bill_model.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
+import 'package:soreconnect/widgets/bill_breakdown_view.dart';
+import 'package:soreconnect/widgets/export_bill_sheet.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class ConsumerBillScreen extends StatefulWidget {
@@ -574,6 +577,26 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                               ((bill["totalAmount"] as num?) ?? 0)
                                   .toDouble();
 
+                          final rawBreakdown = bill["breakdown"];
+                          final BillBreakdown? breakdown =
+                              rawBreakdown is Map
+                                  ? BillBreakdown.fromMap(
+                                      Map<String, dynamic>.from(
+                                        rawBreakdown,
+                                      ),
+                                    )
+                                  : null;
+
+                          final double previousReading =
+                              ((bill["previousReading"] as num?) ?? 0)
+                                  .toDouble();
+                          final double currentReading =
+                              ((bill["currentReading"] as num?) ?? 0)
+                                  .toDouble();
+                          final double consumption =
+                              ((bill["consumption"] as num?) ?? 0)
+                                  .toDouble();
+
                           return Container(
                             margin: const EdgeInsets.only(
                               bottom: 16,
@@ -604,15 +627,35 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                                 crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                 children: [
-                                  if (ticketNumber.isNotEmpty) ...[
-                                    TicketBadge(
-                                      ticketNumber: ticketNumber,
-                                      color: Theme.of(
-                                        context,
-                                      ).primaryColor,
-                                    ),
-                                    const SizedBox(height: 8),
-                                  ],
+                                  Row(
+                                    children: [
+                                      if (ticketNumber.isNotEmpty) ...[
+                                        TicketBadge(
+                                          ticketNumber: ticketNumber,
+                                          color: Theme.of(
+                                            context,
+                                          ).primaryColor,
+                                        ),
+                                        const SizedBox(width: 6),
+                                      ],
+                                      IconButton(
+                                        icon: const Icon(Icons.ios_share),
+                                        tooltip: "Export bill",
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: () => showExportBillOptions(
+                                          context,
+                                          bill: bill,
+                                          breakdown: breakdown,
+                                          ticketNumber: ticketNumber.isNotEmpty
+                                              ? ticketNumber
+                                              : bills[index].id,
+                                          includeDisconnectionNotice:
+                                              !isPaid && !isCancelled,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
                                   Row(
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
@@ -674,26 +717,6 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                                     "${bill["billingPeriod"] ?? "-"}",
                                   ),
 
-                                  _detailRow(
-                                    "Previous Reading",
-                                    "${bill["previousReading"] ?? 0} kWh",
-                                  ),
-
-                                  _detailRow(
-                                    "Current Reading",
-                                    "${bill["currentReading"] ?? 0} kWh",
-                                  ),
-
-                                  _detailRow(
-                                    "Consumption",
-                                    "${bill["consumption"] ?? 0} kWh",
-                                  ),
-
-                                  _detailRow(
-                                    "Rate per kWh",
-                                    "₱${bill["ratePerKwh"] ?? 0}",
-                                  ),
-
                                   const SizedBox(height: 8),
 
                                   _detailRow(
@@ -718,28 +741,72 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                                     color: Colors.grey.shade200,
                                   ),
 
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        "Total Amount",
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey.shade600,
+                                  if (breakdown != null)
+                                    BillBreakdownView(
+                                      breakdown: breakdown,
+                                      previousReading: previousReading,
+                                      currentReading: currentReading,
+                                      consumption: consumption,
+                                      municipality:
+                                          bill["municipality"]?.toString(),
+                                      dueDate: (!isPaid && !isCancelled)
+                                          ? dueTimestamp?.toDate()
+                                          : null,
+                                    )
+                                  else ...[
+                                    _detailRow(
+                                      "Previous Reading",
+                                      "${bill["previousReading"] ?? 0} kWh",
+                                    ),
+
+                                    _detailRow(
+                                      "Current Reading",
+                                      "${bill["currentReading"] ?? 0} kWh",
+                                    ),
+
+                                    _detailRow(
+                                      "Consumption",
+                                      "${bill["consumption"] ?? 0} kWh",
+                                    ),
+
+                                    _detailRow(
+                                      "Rate per kWh",
+                                      "₱${bill["ratePerKwh"] ?? 0}",
+                                    ),
+
+                                    const SizedBox(height: 8),
+
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "Total Amount",
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.grey.shade600,
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        "₱${totalAmount.toStringAsFixed(2)}",
-                                        style: TextStyle(
-                                          color: Colors.grey.shade900,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 22,
+                                        Text(
+                                          "₱${totalAmount.toStringAsFixed(2)}",
+                                          style: TextStyle(
+                                            color: Colors.grey.shade900,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 22,
+                                          ),
                                         ),
+                                      ],
+                                    ),
+                                    if (dueTimestamp != null &&
+                                        !isPaid &&
+                                        !isCancelled) ...[
+                                      const SizedBox(height: 12),
+                                      DisconnectionNoticeCard(
+                                        dueDate: dueTimestamp.toDate(),
                                       ),
                                     ],
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),

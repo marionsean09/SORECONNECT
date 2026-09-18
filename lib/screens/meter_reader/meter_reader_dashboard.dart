@@ -6,6 +6,9 @@ import 'package:intl/intl.dart';
 import 'package:soreconnect/screens/meter_reader/meter_reading_screen.dart';
 import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
+import 'package:soreconnect/utils/page_transitions.dart';
+import 'package:soreconnect/widgets/bill_breakdown_view.dart';
 
 class MeterReaderDashboard extends StatefulWidget {
   const MeterReaderDashboard({super.key});
@@ -14,7 +17,8 @@ class MeterReaderDashboard extends StatefulWidget {
   State<MeterReaderDashboard> createState() => _MeterReaderDashboardState();
 }
 
-class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
+class _MeterReaderDashboardState extends State<MeterReaderDashboard>
+    with SingleTickerProviderStateMixin {
   static const Color _primaryGreen = Color(0xFF1B5E20);
   static const Color _accentGold = Color(0xFFDAA520);
 
@@ -27,8 +31,54 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
 
   String _sortBy = 'Newest';
 
+  // ------------------------------------------------------------
+  // SEARCH
+  // ------------------------------------------------------------
+
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   // Cache consumer locations so we do not repeatedly query Firestore.
   final Map<String, Map<String, dynamic>> _locationCache = {};
+
+  // ------------------------------------------------------------
+  // ENTRANCE ANIMATION
+  // ------------------------------------------------------------
+
+  late final AnimationController _entranceController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+
+  bool _logoutPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: pageTransitionCurve,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(_fadeAnimation);
+
+    _entranceController.forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // ------------------------------------------------------------
   // LOGOUT
@@ -41,9 +91,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
-      ),
+      smoothPageRoute(const LoginScreen()),
     );
   }
 
@@ -408,6 +456,26 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
   }
 
   // ------------------------------------------------------------
+  // SEARCH MATCHING
+  // ------------------------------------------------------------
+
+  bool _matchesSearch(
+    Map<String, dynamic> data,
+  ) {
+    final query = _searchQuery.trim().toLowerCase();
+
+    if (query.isEmpty) return true;
+
+    final searchable = [
+      data['consumerName'],
+      data['accountNumber'],
+      data['billingPeriod'],
+    ].map((v) => (v ?? '').toString().toLowerCase()).join(' ');
+
+    return searchable.contains(query);
+  }
+
+  // ------------------------------------------------------------
   // SUMMARY CARD
   // ------------------------------------------------------------
 
@@ -709,6 +777,18 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
     final address =
         location['address']?.toString() ?? '';
 
+    final rawBreakdown = data['breakdown'];
+    final BillBreakdown? breakdown = rawBreakdown is Map
+        ? BillBreakdown.fromMap(Map<String, dynamic>.from(rawBreakdown))
+        : null;
+
+    final previousReading =
+        (data['previousReading'] as num?)?.toDouble() ?? 0.0;
+    final currentReading =
+        (data['currentReading'] as num?)?.toDouble() ?? 0.0;
+    final consumption =
+        (data['consumption'] as num?)?.toDouble() ?? 0.0;
+
     return Card(
       margin: const EdgeInsets.only(
         bottom: 12,
@@ -888,32 +968,43 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
             const Divider(),
 
             // ------------------------------------------------
-            // READINGS
+            // READINGS / BILL BREAKDOWN
             // ------------------------------------------------
 
-            Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Previous: ${data['previousReading'] ?? 0}',
-                ),
-                Text(
-                  'Current: ${data['currentReading'] ?? 0}',
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 5),
-
-            Text(
-              'Consumption: ${data['consumption'] ?? 0} kWh',
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
+            if (breakdown != null) ...[
+              BillBreakdownView(
+                breakdown: breakdown,
+                previousReading: previousReading,
+                currentReading: currentReading,
+                consumption: consumption,
+                municipality: municipality,
               ),
-            ),
+              const SizedBox(height: 8),
+            ] else ...[
+              Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Previous: ${data['previousReading'] ?? 0}',
+                  ),
+                  Text(
+                    'Current: ${data['currentReading'] ?? 0}',
+                  ),
+                ],
+              ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 5),
+
+              Text(
+                'Consumption: ${data['consumption'] ?? 0} kWh',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+            ],
 
             // ------------------------------------------------
             // DATE
@@ -968,11 +1059,27 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.logout,
+          Listener(
+            onPointerDown: (_) => setState(
+              () => _logoutPressed = true,
             ),
-            onPressed: _logout,
+            onPointerUp: (_) => setState(
+              () => _logoutPressed = false,
+            ),
+            onPointerCancel: (_) => setState(
+              () => _logoutPressed = false,
+            ),
+            child: AnimatedScale(
+              scale: _logoutPressed ? 0.88 : 1.0,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOut,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.logout,
+                ),
+                onPressed: _logout,
+              ),
+            ),
           ),
         ],
       ),
@@ -1031,7 +1138,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                   doc.data()
                       as Map<String, dynamic>;
 
-              return _matchesLocation(data);
+              return _matchesLocation(data) && _matchesSearch(data);
             }).toList();
 
             // --------------------------------------------------
@@ -1148,7 +1255,11 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
             // UI
             // --------------------------------------------------
 
-            return SingleChildScrollView(
+            return FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: SingleChildScrollView(
               padding:
                   const EdgeInsets.fromLTRB(
                 20,
@@ -1391,6 +1502,48 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                   const SizedBox(height: 24),
 
                   // ============================================
+                  // SEARCH
+                  // ============================================
+
+                  TextField(
+                    controller: _searchController,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText:
+                          "Search consumer, account #, billing period...",
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close),
+                              tooltip: "Clear search",
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                });
+                              },
+                            ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ============================================
                   // DETAILS HEADER + SORT
                   // ============================================
 
@@ -1574,6 +1727,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
                   ),
                 ],
               ),
+                ),
+              ),
             );
           },
         ),
@@ -1583,34 +1738,36 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
       // BOTTOM NAVIGATION
       // --------------------------------------------------------
 
-      bottomNavigationBar:
-          BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                    const MeterReadingScreen(),
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: 0,
+          elevation: 12,
+          onTap: (index) {
+            if (index == 1) {
+              Navigator.push(
+                context,
+                smoothPageRoute(const MeterReadingScreen()),
+              );
+            }
+          },
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.home_outlined,
               ),
-            );
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.home_outlined,
+              label: 'Home',
             ),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.edit,
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.edit,
+              ),
+              label: 'Readings',
             ),
-            label: 'Readings',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

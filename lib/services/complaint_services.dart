@@ -321,6 +321,45 @@ class ComplaintService {
   }
 
   // ============================================================
+  // UPDATE COMPLAINT CONTENT (CONSUMER)
+  // Lets the consumer fix the description and/or swap the photo
+  // on a complaint they already submitted, while it's still
+  // Pending or In Progress.
+  // ============================================================
+
+  Future<void> updateComplaintContent({
+    required String complaintId,
+    required String description,
+    XFile? newImage,
+    bool removeImage = false,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'description': description.trim(),
+        'editedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (newImage != null) {
+        final encoded = await encodeImageToBase64(newImage);
+        data['imageBase64'] = encoded.base64;
+        data['imageMimeType'] = encoded.mimeType;
+      } else if (removeImage) {
+        data['imageBase64'] = null;
+        data['imageMimeType'] = null;
+      }
+
+      await _firestore
+          .collection('complaints')
+          .doc(complaintId)
+          .update(data);
+    } catch (e) {
+      throw Exception(
+        "Failed to update complaint: $e",
+      );
+    }
+  }
+
+  // ============================================================
   // COMPLAINT REPLY THREAD
   // Consumer, teller, and director can all post replies to the
   // same complaint, in order, as an ongoing conversation.
@@ -380,6 +419,40 @@ class ComplaintService {
     } catch (e) {
       throw Exception(
         "Failed to send reply: $e",
+      );
+    }
+  }
+
+  // ============================================================
+  // UPDATE REPLY
+  // Lets the sender fix a reply they already sent. The UI only
+  // shows this for the sender's own bubble.
+  // ============================================================
+
+  Future<void> updateReply({
+    required String complaintId,
+    required String replyId,
+    required String message,
+  }) async {
+    final trimmed = message.trim();
+
+    if (trimmed.isEmpty) {
+      return;
+    }
+
+    try {
+      await _firestore
+          .collection('complaints')
+          .doc(complaintId)
+          .collection('replies')
+          .doc(replyId)
+          .update({
+        'message': trimmed,
+        'editedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception(
+        "Failed to update reply: $e",
       );
     }
   }

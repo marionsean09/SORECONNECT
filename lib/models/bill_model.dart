@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
 
 class BillModel {
   final String billId;
@@ -13,6 +14,10 @@ class BillModel {
 
   final double ratePerKwh;
   final double totalAmount;
+
+  // Itemized SORECO-style breakdown. Null for bills generated
+  // before this feature existed, which fall back to a flat display.
+  final BillBreakdown? breakdown;
 
   final String billingPeriod;
 
@@ -36,6 +41,7 @@ class BillModel {
     required this.consumption,
     required this.ratePerKwh,
     required this.totalAmount,
+    this.breakdown,
     required this.billingPeriod,
     required this.paymentStartDate,
     required this.dueDate,
@@ -56,6 +62,7 @@ class BillModel {
       'consumption': consumption,
       'ratePerKwh': ratePerKwh,
       'totalAmount': totalAmount,
+      if (breakdown != null) 'breakdown': breakdown!.toMap(),
       'billingPeriod': billingPeriod,
       'paymentStartDate': Timestamp.fromDate(paymentStartDate),
       'dueDate': Timestamp.fromDate(dueDate),
@@ -67,6 +74,8 @@ class BillModel {
 
   factory BillModel.fromMap(Map<String, dynamic> map) {
     final billId = map['billId'] ?? '';
+
+    final rawBreakdown = map['breakdown'];
 
     return BillModel(
       billId: billId,
@@ -85,6 +94,9 @@ class BillModel {
           (map['ratePerKwh'] ?? 0).toDouble(),
       totalAmount:
           (map['totalAmount'] ?? 0).toDouble(),
+      breakdown: rawBreakdown is Map
+          ? BillBreakdown.fromMap(Map<String, dynamic>.from(rawBreakdown))
+          : null,
       billingPeriod: map['billingPeriod'] ?? '',
       paymentStartDate:
           (map['paymentStartDate'] as Timestamp?)?.toDate() ??

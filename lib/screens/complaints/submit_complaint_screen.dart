@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -238,6 +239,41 @@ class _SubmitComplaintScreenState
         SnackBar(
           backgroundColor: Colors.red,
           content: Text("Failed to cancel complaint: $e"),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // EDIT COMPLAINT
+  // ============================================================
+
+  Future<void> _editComplaint(
+    String complaintId,
+    String description,
+    String imageBase64,
+  ) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return _EditComplaintSheet(
+          complaintId: complaintId,
+          initialDescription: description,
+          initialImageBase64: imageBase64,
+          complaintService: _complaintService,
+        );
+      },
+    );
+
+    if (updated == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.green,
+          content: Text("Complaint updated."),
         ),
       );
     }
@@ -725,6 +761,9 @@ class _SubmitComplaintScreenState
                             (data['status'] ?? 'Pending')
                                 .toString();
 
+                        final isEdited =
+                            data['editedAt'] != null;
+
                         final ticketNumber =
                             (data['ticketNumber'] ?? '')
                                 .toString();
@@ -855,11 +894,16 @@ class _SubmitComplaintScreenState
                                       ),
                                     const Spacer(),
                                     Text(
-                                      dateText,
+                                      isEdited
+                                          ? '$dateText (edited)'
+                                          : dateText,
                                       textAlign: TextAlign.right,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: Colors.grey,
                                         fontSize: 11,
+                                        fontStyle: isEdited
+                                            ? FontStyle.italic
+                                            : FontStyle.normal,
                                       ),
                                     ),
                                   ],
@@ -1024,31 +1068,59 @@ class _SubmitComplaintScreenState
                                 ),
 
                                 // ==========================
-                                // CANCEL COMPLAINT
+                                // EDIT / CANCEL COMPLAINT
                                 // ==========================
 
                                 if (canCancel) ...[
                                   const SizedBox(
                                     height: 14,
                                   ),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        side: const BorderSide(
-                                          color: Colors.red,
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor:
+                                                Theme.of(context)
+                                                    .primaryColor,
+                                            side: BorderSide(
+                                              color: Theme.of(context)
+                                                  .primaryColor,
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                          ),
+                                          label: const Text(
+                                            "Edit",
+                                          ),
+                                          onPressed: () => _editComplaint(
+                                            d.id,
+                                            description,
+                                            imageBase64,
+                                          ),
                                         ),
                                       ),
-                                      icon: const Icon(
-                                        Icons.cancel_outlined,
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.red,
+                                            side: const BorderSide(
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.cancel_outlined,
+                                          ),
+                                          label: const Text(
+                                            "Cancel",
+                                          ),
+                                          onPressed: () =>
+                                              _confirmCancelComplaint(d.id),
+                                        ),
                                       ),
-                                      label: const Text(
-                                        "Cancel Complaint",
-                                      ),
-                                      onPressed: () =>
-                                          _confirmCancelComplaint(d.id),
-                                    ),
+                                    ],
                                   ),
                                 ],
                               ],
@@ -1066,6 +1138,305 @@ class _SubmitComplaintScreenState
 
             const SizedBox(height: 30),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// EDIT COMPLAINT SHEET
+// Bottom sheet letting the consumer fix a complaint's description
+// and/or swap its photo, while it's still Pending or In Progress.
+// ============================================================
+
+class _EditComplaintSheet extends StatefulWidget {
+  const _EditComplaintSheet({
+    required this.complaintId,
+    required this.initialDescription,
+    required this.initialImageBase64,
+    required this.complaintService,
+  });
+
+  final String complaintId;
+  final String initialDescription;
+  final String initialImageBase64;
+  final ComplaintService complaintService;
+
+  @override
+  State<_EditComplaintSheet> createState() => _EditComplaintSheetState();
+}
+
+class _EditComplaintSheetState extends State<_EditComplaintSheet> {
+  late final TextEditingController _descriptionController;
+  final ImagePicker _imagePicker = ImagePicker();
+
+  XFile? _newImage;
+  Uint8List? _newImageBytes;
+  bool _imageRemoved = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _descriptionController =
+        TextEditingController(text: widget.initialDescription);
+  }
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 60,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
+
+      if (image == null) return;
+
+      final bytes = await image.readAsBytes();
+
+      if (!mounted) return;
+
+      setState(() {
+        _newImage = image;
+        _newImageBytes = bytes;
+        _imageRemoved = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("Failed to pick image: $e"),
+        ),
+      );
+    }
+  }
+
+  void _showImageSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text("Take a photo"),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text("Choose from gallery"),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _removeImage() {
+    setState(() {
+      _newImage = null;
+      _newImageBytes = null;
+      _imageRemoved = true;
+    });
+  }
+
+  Future<void> _save() async {
+    final description = _descriptionController.text.trim();
+
+    if (description.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Description is required.")),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      await widget.complaintService.updateComplaintContent(
+        complaintId: widget.complaintId,
+        description: description,
+        newImage: _newImage,
+        removeImage: _imageRemoved,
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => _saving = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("Failed to update complaint: $e"),
+        ),
+      );
+    }
+  }
+
+  Widget _buildRemovableImage(ImageProvider provider) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image(
+            image: provider,
+            height: 160,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        ),
+        Positioned(
+          top: 6,
+          right: 6,
+          child: GestureDetector(
+            onTap: _removeImage,
+            child: const CircleAvatar(
+              radius: 15,
+              backgroundColor: Colors.black54,
+              child: Icon(
+                Icons.close,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageSection() {
+    if (_newImageBytes != null) {
+      return _buildRemovableImage(MemoryImage(_newImageBytes!));
+    }
+
+    if (!_imageRemoved && widget.initialImageBase64.isNotEmpty) {
+      return _buildRemovableImage(
+        MemoryImage(base64Decode(widget.initialImageBase64)),
+      );
+    }
+
+    return InkWell(
+      onTap: _showImageSourceSheet,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: double.infinity,
+        height: 80,
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade400),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Center(
+          child: Text(
+            "Tap to add a photo",
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Edit Complaint',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _descriptionController,
+                  minLines: 3,
+                  maxLines: 6,
+                  enabled: !_saving,
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Photo',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                _buildImageSection(),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Save Changes'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

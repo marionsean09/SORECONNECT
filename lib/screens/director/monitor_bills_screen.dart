@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/models/bill_model.dart';
+import 'package:soreconnect/utils/bill_calculator.dart';
+import 'package:soreconnect/widgets/bill_breakdown_view.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
 class MonitorBillsScreen extends StatefulWidget {
@@ -1129,6 +1131,24 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                               double.tryParse(amount) ?? 0.0;
                         }
 
+                        // BREAKDOWN
+
+                        final rawBreakdown = data['breakdown'];
+                        final BillBreakdown? breakdown = rawBreakdown is Map
+                            ? BillBreakdown.fromMap(
+                                Map<String, dynamic>.from(rawBreakdown),
+                              )
+                            : null;
+
+                        final previousReading =
+                            (data['previousReading'] as num?)?.toDouble() ??
+                                0.0;
+                        final currentReading =
+                            (data['currentReading'] as num?)?.toDouble() ??
+                                0.0;
+                        final consumption =
+                            (data['consumption'] as num?)?.toDouble() ?? 0.0;
+
                         // DATE
 
                         final billDate = _getBillDate(data);
@@ -1153,7 +1173,19 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
 
                         // BILL CARD
 
-                        return Card(
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _showBillDetail(
+                            context,
+                            data: data,
+                            breakdown: breakdown,
+                            previousReading: previousReading,
+                            currentReading: currentReading,
+                            consumption: consumption,
+                            totalAmount: totalAmount,
+                            municipality: municipality,
+                          ),
+                          child: Card(
                           margin: const EdgeInsets.only(
                             bottom: 12,
                           ),
@@ -1364,6 +1396,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
                               ],
                             ),
                           ),
+                        ),
                         );
                       },
                     );
@@ -1374,6 +1407,114 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // ============================================================
+  // BILL DETAIL SHEET
+  // ============================================================
+
+  void _showBillDetail(
+    BuildContext context, {
+    required Map<String, dynamic> data,
+    required BillBreakdown? breakdown,
+    required double previousReading,
+    required double currentReading,
+    required double consumption,
+    required double totalAmount,
+    required String municipality,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    data['consumerName'] ?? 'Unknown',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Account: ${data['accountNumber'] ?? 'N/A'} · '
+                    '${data['billingPeriod'] ?? 'N/A'}',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                  const SizedBox(height: 16),
+                  if (breakdown != null)
+                    BillBreakdownView(
+                      breakdown: breakdown,
+                      previousReading: previousReading,
+                      currentReading: currentReading,
+                      consumption: consumption,
+                      municipality: municipality,
+                      initiallyExpanded: true,
+                    )
+                  else ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Consumption: ${consumption.toStringAsFixed(2)} kWh',
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Total Amount: ₱${totalAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'This bill was generated before itemized '
+                              'breakdowns were tracked.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

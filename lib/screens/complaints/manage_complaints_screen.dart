@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -18,7 +20,14 @@ class ManageComplaintsScreen extends StatefulWidget {
       _ManageComplaintsScreenState();
 }
 
-class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
+class _ManageComplaintsScreenState extends State<ManageComplaintsScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (filters, scroll position) alive when
+  // swiping to another bottom-nav tab, instead of disposing and
+  // rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ComplaintService _complaintService =
       ComplaintService();
@@ -38,6 +47,13 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   String _barangayFilter = 'All Barangays';
   String _sortOption = 'Newest';
 
+  // Whether this teller's fixed branch (from their profile) is still
+  // being fetched. The municipality filter is no longer picked by
+  // hand — it's locked to the teller's own assigned branch, and only
+  // the barangay stays freely selectable within it.
+  bool _branchLoading = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
   final TextEditingController _searchController =
       TextEditingController();
   String _searchQuery = '';
@@ -49,9 +65,71 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   final Map<String, Map<String, dynamic>> _locationCache = {};
 
   @override
+  void initState() {
+    super.initState();
+    _listenToBranch();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _branchSub?.cancel();
     super.dispose();
+  }
+
+  // ============================================================
+  // LISTEN TO BRANCH
+  //
+  // The location filter is locked to this teller's own assigned
+  // branch, set in their profile. That branch stays editable there,
+  // so this listens live (not a one-off fetch) — if it's changed
+  // mid-session, this filter picks it up immediately instead of
+  // showing a stale municipality.
+  // ============================================================
+
+  void _listenToBranch() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
+
+    _branchSub = _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+
+            final municipality = doc.data()?['municipality']?.toString();
+
+            final resolved =
+                (municipality != null &&
+                    municipality.isNotEmpty &&
+                    _getMunicipalities().contains(municipality))
+                ? municipality
+                : 'All Municipalities';
+
+            final changed = resolved != _municipalityFilter;
+
+            setState(() {
+              _municipalityFilter = resolved;
+              _branchLoading = false;
+
+              // The branch changed (e.g. reassigned from profile) —
+              // drop any barangay picked under the old municipality.
+              if (changed) {
+                _barangayFilter = 'All Barangays';
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
   }
 
   // ============================================================
@@ -1278,6 +1356,48 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
     );
   }
 
+  // ============================================================
+  // BRANCH DISPLAY (LOCKED)
+  //
+  // The municipality is no longer a dropdown — it's this teller's
+  // own fixed branch, set once in their profile.
+  // ============================================================
+
+  Widget _buildBranchLocked() {
+    final unset =
+        !_branchLoading && _municipalityFilter == 'All Municipalities';
+
+    return _buildDropdownContainer(
+      height: 48,
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_city,
+            size: 18,
+            color: unset ? Colors.grey : Colors.orange,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _branchLoading
+                  ? 'Loading your branch...'
+                  : (unset
+                      ? 'Branch not set — update your profile'
+                      : _municipalityFilter),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: unset ? Colors.red.shade600 : Colors.black87,
+              ),
+            ),
+          ),
+          Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFilterDropdown({
     required String value,
     required List<
@@ -1703,8 +1823,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
   Widget build(
     BuildContext context,
   ) {
-    final municipalities =
-        _getMunicipalities();
+    super.build(context);
 
     final barangays =
         _getBarangaysForSelectedMunicipality();
@@ -1730,12 +1849,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
             primaryOrange,
         foregroundColor:
             Colors.white,
-        title: const Text(
-          'Manage Complaints',
-          style: TextStyle(
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        title: const Text('Manage Complaints'),
       ),
 
       // ========================================================
@@ -1986,64 +2100,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen> {
                 // MUNICIPALITY
                 // ==================================================
 
-                _buildFilterDropdown(
-                  value:
-                      _municipalityFilter,
-                  items: [
-                    const DropdownMenuItem<
-                        String>(
-                      value:
-                          'All Municipalities',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons
-                                .location_city,
-                            size: 18,
-                            color:
-                                Colors.orange,
-                          ),
-                          SizedBox(
-                            width: 8,
-                          ),
-                          Text(
-                            'All Municipalities',
-                          ),
-                        ],
-                      ),
-                    ),
-                    ...municipalities.map(
-                      (municipality) {
-                        return DropdownMenuItem<
-                            String>(
-                          value:
-                              municipality,
-                          child: Text(
-                            municipality,
-                            overflow:
-                                TextOverflow
-                                    .ellipsis,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                  onChanged:
-                      (value) {
-                    if (value ==
-                        null) {
-                      return;
-                    }
-
-                    setState(() {
-                      _municipalityFilter =
-                          value;
-
-                      _barangayFilter =
-                          'All Barangays';
-                    });
-                  },
-                ),
+                _buildBranchLocked(),
 
                 const SizedBox(
                   height: 10,

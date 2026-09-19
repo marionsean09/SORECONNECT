@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +12,22 @@ import 'package:soreconnect/screens/announcements/view_announcements_screen.dart
 import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/utils/pending_email_guard.dart';
 
+// ============================================================
+// CONSUMER DASHBOARD (TAB SHELL)
+//
+// Hosts the bottom nav's 5 destinations as sibling pages in one
+// PageView instead of pushing each as a separate route. That's
+// what makes swiping between them possible, and why none of them
+// show a back arrow — there's no previous route to pop back to,
+// they're siblings, not a push stack. Tapping a nav icon animates
+// the same PageController a route push never could.
+//
+// Each page keeps its own Scaffold/AppBar exactly as before, and
+// mixes in AutomaticKeepAliveClientMixin so switching tabs doesn't
+// tear down its state (scroll position, in-progress edits, active
+// Firestore listeners) the way leaving via Navigator would have.
+// ============================================================
+
 class ConsumerDashboard extends StatefulWidget {
   const ConsumerDashboard({super.key});
 
@@ -18,6 +36,144 @@ class ConsumerDashboard extends StatefulWidget {
 }
 
 class _ConsumerDashboardState extends State<ConsumerDashboard> {
+  static const orange = Color(0xFFFFA000);
+
+  // Strong ease-out — starts fast so a tapped tab feels immediate
+  // rather than a generic linear/ease-in-out glide.
+  static const Curve _tabCurve = Cubic(0.23, 1, 0.32, 1);
+
+  late final PageController _pageController;
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = const [
+    _ConsumerHomeTab(),
+    ConsumerBillScreen(),
+    SubmitComplaintScreen(),
+    ViewAnnouncementsScreen(),
+    ConsumerProfileScreen(),
+  ];
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pageController = PageController();
+
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+
+  void _goToTab(int index) {
+    if (index == _currentIndex) return;
+
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: _tabCurve,
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      return const LoginScreen();
+    }
+
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: _pages,
+      ),
+
+      // ========================================================
+      // BOTTOM NAVIGATION
+      // ========================================================
+
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _currentIndex,
+        selectedItemColor: orange,
+        unselectedItemColor: Colors.grey,
+        onTap: _goToTab,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long_outlined),
+            activeIcon: Icon(Icons.receipt_long),
+            label: 'Bills',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.report_problem_outlined),
+            activeIcon: Icon(Icons.report_problem),
+            label: 'Complaints',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.campaign_outlined),
+            activeIcon: Icon(Icons.campaign),
+            label: 'News',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME TAB
+//
+// Unchanged from the dashboard's previous single-screen body —
+// only relocated here so it can live as its own PageView page
+// with its own keep-alive state, same as every other tab.
+// ============================================================
+
+class _ConsumerHomeTab extends StatefulWidget {
+  const _ConsumerHomeTab();
+
+  @override
+  State<_ConsumerHomeTab> createState() => _ConsumerHomeTabState();
+}
+
+class _ConsumerHomeTabState extends State<_ConsumerHomeTab>
+    with AutomaticKeepAliveClientMixin {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
@@ -31,39 +187,48 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
   static const orange = Color(0xFFFFA000);
   static const background = Color(0xFFF5F7F5);
 
+  @override
+  bool get wantKeepAlive => true;
+
   // ============================================================
-  // INIT
+  // CONSUMER NAME (FOR WELCOME CARD)
+  //
+  // Listened live (not a one-off fetch) so editing your name in
+  // Profile updates the welcome card immediately when you swipe
+  // back to Home, instead of showing a stale name.
   // ============================================================
+
+  String? _consumerName;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _nameSub;
 
   @override
   void initState() {
     super.initState();
-
-    // Safety net: finishes signing out if an email change was
-    // confirmed while this screen wasn't the one watching for it
-    // (e.g. backed out of the verify screen, or the app was
-    // backgrounded when the confirmation link was tapped).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) checkPendingEmailConfirmed(context);
-    });
+    _listenToName();
   }
 
-  // ============================================================
-  // LOGOUT
-  // ============================================================
+  @override
+  void dispose() {
+    _nameSub?.cancel();
+    super.dispose();
+  }
 
-  Future<void> _logout() async {
-    await _auth.signOut();
+  void _listenToName() {
+    final uid = _auth.currentUser?.uid;
 
-    if (!mounted) return;
+    if (uid == null) return;
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
-      ),
-      (_) => false,
-    );
+    _nameSub = _firestore.collection('users').doc(uid).snapshots().listen((
+      doc,
+    ) {
+      if (!mounted) return;
+
+      final name = doc.data()?['full_name']?.toString().trim();
+
+      setState(() {
+        _consumerName = (name != null && name.isNotEmpty) ? name : null;
+      });
+    });
   }
 
   // ============================================================
@@ -378,24 +543,13 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
   }
 
   // ============================================================
-  // NAVIGATION
-  // ============================================================
-
-  void _openScreen(Widget screen) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => screen,
-      ),
-    );
-  }
-
-  // ============================================================
   // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final user = _auth.currentUser;
 
     if (user == null) {
@@ -410,25 +564,30 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
       // ========================================================
 
       appBar: AppBar(
-        title: const Text(
-          'Consumer Dashboard',
-          style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/soreco_logo.png',
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(
+              child: Text(
+                'SORECONNECT',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         backgroundColor: orange,
         foregroundColor:
             Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon:
-                const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _logout,
-          ),
-        ],
       ),
 
       // ========================================================
@@ -586,6 +745,76 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
                         CrossAxisAlignment
                             .start,
                     children: [
+                      // ==================================================
+                      // WELCOME CARD
+                      // ==================================================
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: orange.withValues(alpha: 0.10),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: orange.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.person,
+                                color: orange,
+                                size: 30,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'WELCOME, ${_consumerName ?? 'Consumer'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: orange,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    "Here's an overview of your electricity account.",
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
                       // ==================================================
                       // ACCOUNT SUMMARY
                       // ==================================================
@@ -1136,97 +1365,6 @@ class _ConsumerDashboardState extends State<ConsumerDashboard> {
             );
           },
         ),
-      ),
-
-      // ========================================================
-      // BOTTOM NAVIGATION
-      // ========================================================
-
-      bottomNavigationBar:
-          BottomNavigationBar(
-        type:
-            BottomNavigationBarType.fixed,
-        currentIndex: 0,
-        selectedItemColor:
-            orange,
-        unselectedItemColor:
-            Colors.grey,
-        onTap: (index) {
-          if (index == 0) {
-            return;
-          }
-
-          switch (index) {
-            case 1:
-              _openScreen(
-                const ConsumerBillScreen(),
-              );
-              break;
-
-            case 2:
-              _openScreen(
-                const SubmitComplaintScreen(),
-              );
-              break;
-
-            case 3:
-              _openScreen(
-                const ViewAnnouncementsScreen(),
-              );
-              break;
-
-            case 4:
-              _openScreen(
-                const ConsumerProfileScreen(),
-              );
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon:
-                Icon(Icons.home_outlined),
-            activeIcon:
-                Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.receipt_long_outlined,
-            ),
-            activeIcon: Icon(
-              Icons.receipt_long,
-            ),
-            label: 'Bills',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.report_problem_outlined,
-            ),
-            activeIcon: Icon(
-              Icons.report_problem,
-            ),
-            label: 'Complaints',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.campaign_outlined,
-            ),
-            activeIcon: Icon(
-              Icons.campaign,
-            ),
-            label: 'News',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(
-              Icons.person_outline,
-            ),
-            activeIcon: Icon(
-              Icons.person,
-            ),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }

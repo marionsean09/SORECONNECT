@@ -17,9 +17,32 @@ class ConsumerBillScreen extends StatefulWidget {
 }
 
 class _ConsumerBillScreenState extends State<ConsumerBillScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (scroll position, filters, active
+  // Firestore listener) alive when swiping to another bottom-nav
+  // tab, instead of disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   String _selectedFilter = 'All';
   String _selectedSort = 'Newest';
+  String _selectedMonth = 'All Months';
+  String _selectedYear = 'All Years';
+
+  static const List<String> _months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
 
   final TextEditingController _searchController =
       TextEditingController();
@@ -118,6 +141,28 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                 .toString()
                 .toLowerCase() ==
             _selectedFilter.toLowerCase();
+      }).toList();
+    }
+
+    // DATE FILTER (Month / Year)
+    if (_selectedMonth != 'All Months' || _selectedYear != 'All Years') {
+      result = result.where((doc) {
+        final bill = doc.data() as Map<String, dynamic>;
+        final date = (bill['generatedAt'] as Timestamp?)?.toDate();
+
+        if (date == null) return false;
+
+        if (_selectedMonth != 'All Months' &&
+            _months[date.month - 1] != _selectedMonth) {
+          return false;
+        }
+
+        if (_selectedYear != 'All Years' &&
+            date.year.toString() != _selectedYear) {
+          return false;
+        }
+
+        return true;
       }).toList();
     }
 
@@ -618,6 +663,8 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     if (_billsStream == null) {
       return const Scaffold(
         body: Center(
@@ -629,13 +676,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text(
-          "My Bills",
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.2,
-          ),
-        ),
+        title: const Text("My Bills"),
         elevation: 0,
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
@@ -702,7 +743,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                         ),
                       ),
 
-                      // FILTER AND SORT
+                      // FILTER, SORT, AND DATE
                       Padding(
                         padding: const EdgeInsets.all(16),
                         child: Row(
@@ -711,6 +752,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                               child: MinimalDropdown<String>(
                                 value: _selectedFilter,
                                 icon: Icons.filter_list,
+                                fullWidth: true,
                                 items: const [
                                   'All',
                                   'Paid',
@@ -734,6 +776,7 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                               child: MinimalDropdown<String>(
                                 value: _selectedSort,
                                 icon: Icons.sort,
+                                fullWidth: true,
                                 items: const [
                                   'Newest',
                                   'Oldest',
@@ -745,6 +788,51 @@ class _ConsumerBillScreenState extends State<ConsumerBillScreen>
                                   if (value != null) {
                                     setState(() {
                                       _selectedSort = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+
+                            const SizedBox(width: 10),
+
+                            Expanded(
+                              child: MinimalDropdown<String>(
+                                value: _selectedMonth,
+                                icon: Icons.calendar_month_outlined,
+                                fullWidth: true,
+                                items: ['All Months', ..._months],
+                                itemLabel: (value) => value,
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _selectedMonth = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+
+                            const SizedBox(width: 10),
+
+                            Expanded(
+                              child: MinimalDropdown<String>(
+                                value: _selectedYear,
+                                icon: Icons.event_outlined,
+                                fullWidth: true,
+                                items: [
+                                  'All Years',
+                                  ...List.generate(
+                                    5,
+                                    (i) => (DateTime.now().year - 2 + i)
+                                        .toString(),
+                                  ),
+                                ],
+                                itemLabel: (value) => value,
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _selectedYear = value;
                                     });
                                   }
                                 },

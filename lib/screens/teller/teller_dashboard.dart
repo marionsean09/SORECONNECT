@@ -1,14 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:soreconnect/screens/teller/generate_reports_screen.dart';
 import 'package:soreconnect/screens/teller/manage_bills_screen.dart';
 import 'package:soreconnect/screens/complaints/manage_complaints_screen.dart';
-import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
 import 'package:soreconnect/utils/page_transitions.dart';
 import 'package:soreconnect/utils/pending_email_guard.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
+
+// ============================================================
+// TELLER DASHBOARD (TAB SHELL)
+//
+// Hosts the bottom nav's 5 destinations as sibling pages in one
+// PageView instead of pushing each as a separate route — see
+// consumer_dashboard.dart for the full rationale (no back arrow,
+// swipeable, each tab keeps its state alive).
+// ============================================================
 
 class TellerDashboard extends StatefulWidget {
   const TellerDashboard({super.key});
@@ -17,12 +28,133 @@ class TellerDashboard extends StatefulWidget {
   State<TellerDashboard> createState() => _TellerDashboardState();
 }
 
-class _TellerDashboardState extends State<TellerDashboard>
-    with SingleTickerProviderStateMixin {
+class _TellerDashboardState extends State<TellerDashboard> {
+  static const Color _primaryGreen = Color(0xFF1B5E20);
+
+  // Strong ease-out — starts fast so a tapped tab feels immediate
+  // rather than a generic linear/ease-in-out glide.
+  static const Curve _tabCurve = Cubic(0.23, 1, 0.32, 1);
+
+  late final PageController _pageController;
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = const [
+    _TellerHomeTab(),
+    ManageBillsScreen(),
+    GenerateReportScreen(),
+    ManageComplaintsScreen(),
+    StaffProfileScreen(role: 'Teller', userTypeValue: 'teller'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pageController = PageController();
+
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goToTab(int index) {
+    if (index == _currentIndex) return;
+
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: _tabCurve,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: _pages,
+      ),
+
+      // ========================================================
+      // BOTTOM NAVIGATION
+      // ========================================================
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          currentIndex: _currentIndex,
+          selectedItemColor: _primaryGreen,
+          elevation: 12,
+          onTap: _goToTab,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              label: 'Home',
+            ),
+
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long),
+              label: 'Bills',
+            ),
+
+            BottomNavigationBarItem(
+              icon: Icon(Icons.assessment),
+              label: 'Reports',
+            ),
+
+            BottomNavigationBarItem(
+              icon: Icon(Icons.manage_accounts),
+              label: 'Complaints',
+            ),
+
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline),
+              label: 'Profile',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME TAB
+//
+// Unchanged from the dashboard's previous single-screen body —
+// only relocated here so it can live as its own PageView page
+// with its own keep-alive state, same as every other tab.
+// ============================================================
+
+class _TellerHomeTab extends StatefulWidget {
+  const _TellerHomeTab();
+
+  @override
+  State<_TellerHomeTab> createState() => _TellerHomeTabState();
+}
+
+class _TellerHomeTabState extends State<_TellerHomeTab>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   static const Color _primaryGreen = Color(0xFF1B5E20);
   static const Color _accentGold = Color(0xFFDAA520);
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String _reportType = 'Monthly';
 
@@ -45,6 +177,25 @@ class _TellerDashboardState extends State<TellerDashboard>
   ];
 
   // ------------------------------------------------------------
+  // BRANCH
+  //
+  // Bills/complaints summaries are scoped to this teller's own
+  // branch, the same one Manage Bills/Complaints locks to — listened
+  // live so changing it in Profile updates these totals immediately
+  // instead of leaving stale numbers from the old branch on screen.
+  // ------------------------------------------------------------
+
+  String? _branchMunicipality;
+  bool _branchLoading = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
+  // Resolves a complaint's municipality when it isn't stored
+  // directly on the complaint — keyed by consumer uid, since a
+  // complaint only records the location itself when the consumer
+  // attached one at submission time.
+  final Map<String, String> _consumerMunicipalityCache = {};
+
+  // ------------------------------------------------------------
   // ENTRANCE ANIMATION
   // ------------------------------------------------------------
 
@@ -52,19 +203,11 @@ class _TellerDashboardState extends State<TellerDashboard>
   late final Animation<double> _fadeAnimation;
   late final Animation<Offset> _slideAnimation;
 
-  bool _logoutPressed = false;
-
   @override
   void initState() {
     super.initState();
 
-    // Safety net: finishes signing out if an email change was
-    // confirmed while this screen wasn't the one watching for it
-    // (e.g. backed out of the verify screen, or the app was
-    // backgrounded when the confirmation link was tapped).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) checkPendingEmailConfirmed(context);
-    });
+    _listenToBranch();
 
     _entranceController = AnimationController(
       vsync: this,
@@ -87,15 +230,156 @@ class _TellerDashboardState extends State<TellerDashboard>
   @override
   void dispose() {
     _entranceController.dispose();
+    _branchSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _logout() async {
-    await _auth.signOut();
+  // ------------------------------------------------------------
+  // LISTEN TO BRANCH
+  // ------------------------------------------------------------
 
-    if (mounted) {
-      Navigator.pushReplacement(context, smoothPageRoute(const LoginScreen()));
+  void _listenToBranch() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
     }
+
+    _branchSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+
+            final municipality = doc.data()?['municipality']?.toString();
+
+            setState(() {
+              _branchMunicipality =
+                  (municipality != null && municipality.isNotEmpty)
+                  ? municipality
+                  : null;
+              _branchLoading = false;
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
+  }
+
+  // ------------------------------------------------------------
+  // BILL MUNICIPALITY
+  // ------------------------------------------------------------
+
+  String _getBillMunicipality(Map<String, dynamic> data) {
+    final value = data['municipality'] ?? data['city'];
+    return (value ?? '').toString().trim();
+  }
+
+  // ------------------------------------------------------------
+  // COMPLAINT MUNICIPALITY (WITH CONSUMER LOOKUP FALLBACK)
+  //
+  // Complaints don't store a location at submission time, so this
+  // falls back to the consumer's own profile municipality — cached
+  // per consumer so repeated complaints from the same consumer don't
+  // re-fetch it.
+  // ------------------------------------------------------------
+
+  Future<String> _getComplaintMunicipality(Map<String, dynamic> data) async {
+    final direct =
+        (data['municipality'] ??
+                data['municipalityName'] ??
+                data['city'] ??
+                data['cityName'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (direct.isNotEmpty) return direct;
+
+    final consumerId =
+        (data['consumerId'] ??
+                data['consumerID'] ??
+                data['uid'] ??
+                data['userId'] ??
+                data['consumerUID'] ??
+                data['consumerUid'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (consumerId.isEmpty) return '';
+
+    if (_consumerMunicipalityCache.containsKey(consumerId)) {
+      return _consumerMunicipalityCache[consumerId]!;
+    }
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(consumerId)
+          .get();
+
+      final municipality = (userDoc.data()?['municipality'] ?? '')
+          .toString()
+          .trim();
+
+      _consumerMunicipalityCache[consumerId] = municipality;
+
+      return municipality;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // ------------------------------------------------------------
+  // FILTER COMPLAINTS BY BRANCH
+  // ------------------------------------------------------------
+
+  Future<List<QueryDocumentSnapshot>> _filterComplaintsByBranch(
+    List<QueryDocumentSnapshot> docs,
+  ) async {
+    if (_branchMunicipality == null) return const [];
+
+    final result = <QueryDocumentSnapshot>[];
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+
+      final municipality = await _getComplaintMunicipality(data);
+
+      if (municipality.toLowerCase() == _branchMunicipality!.toLowerCase()) {
+        result.add(doc);
+      }
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // DATE FILTER FIELD (label + minimal dropdown)
+  // ============================================================
+
+  Widget _dateFilterField({required String label, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        child,
+      ],
+    );
   }
 
   // ============================================================
@@ -319,30 +603,33 @@ class _TellerDashboardState extends State<TellerDashboard>
 
   @override
   Widget build(BuildContext context) {
-    final user = _auth.currentUser;
+    super.build(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Teller Dashboard'),
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/soreco_logo.png',
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(
+              child: Text(
+                'SORECONNECT',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          Listener(
-            onPointerDown: (_) => setState(() => _logoutPressed = true),
-            onPointerUp: (_) => setState(() => _logoutPressed = false),
-            onPointerCancel: (_) => setState(() => _logoutPressed = false),
-            child: AnimatedScale(
-              scale: _logoutPressed ? 0.88 : 1.0,
-              duration: const Duration(milliseconds: 120),
-              curve: Curves.easeOut,
-              child: IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: _logout,
-              ),
-            ),
-          ),
-        ],
       ),
 
       body: SafeArea(
@@ -400,22 +687,11 @@ class _TellerDashboardState extends State<TellerDashboard>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Welcome, ${user?.email ?? 'Teller'}',
+                                'WELCOME, TELLER',
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   color: _primaryGreen,
-                                ),
-                              ),
-
-                              const SizedBox(height: 4),
-
-                              const Text(
-                                'Role: TELLER',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black54,
                                 ),
                               ),
 
@@ -438,88 +714,18 @@ class _TellerDashboardState extends State<TellerDashboard>
                   const SizedBox(height: 24),
 
                   // ==================================================
-                  // MONTHLY / YEARLY FILTER
+                  // DATE FILTER (View / Month / Year)
                   // ==================================================
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: _primaryGreen.withValues(alpha: 0.03),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: _primaryGreen.withValues(alpha: 0.18),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryGreen.withValues(alpha: 0.04),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _reportType,
-                            isExpanded: true,
-                            dropdownColor: Colors.white,
-                            icon: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: _primaryGreen,
-                            ),
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: 'View',
-                              floatingLabelStyle: TextStyle(
-                                color: _primaryGreen,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen.withValues(alpha: 0.25),
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen.withValues(alpha: 0.25),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen,
-                                  width: 1.7,
-                                ),
-                              ),
-                              prefixIcon: Icon(
-                                Icons.calendar_month_outlined,
-                                color: _primaryGreen,
-                                size: 18,
-                              ),
-                              isDense: true,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'Monthly',
-                                child: Text('Monthly'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Yearly',
-                                child: Text('Yearly'),
-                              ),
-                            ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _dateFilterField(
+                          label: 'View',
+                          child: MinimalDropdown<String>(
+                            value: _reportType,
+                            items: const ['Monthly', 'Yearly'],
+                            itemLabel: (value) => value,
+                            fullWidth: true,
                             onChanged: (value) {
                               setState(() {
                                 _reportType = value ?? 'Monthly';
@@ -527,63 +733,18 @@ class _TellerDashboardState extends State<TellerDashboard>
                             },
                           ),
                         ),
+                      ),
 
+                      if (_reportType == 'Monthly') ...[
                         const SizedBox(width: 10),
-
-                        if (_reportType == 'Monthly')
-                          Expanded(
-                            child: DropdownButtonFormField<int>(
-                              initialValue: _selectedMonth,
-                              isExpanded: true,
-                              dropdownColor: Colors.white,
-                              icon: Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: _primaryGreen,
-                              ),
-                              style: const TextStyle(
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: 'Month',
-                                floatingLabelStyle: TextStyle(
-                                  color: _primaryGreen,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 12,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: _primaryGreen.withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: _primaryGreen.withValues(alpha: 0.25),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: _primaryGreen,
-                                    width: 1.7,
-                                  ),
-                                ),
-                                isDense: true,
-                              ),
-                              items: List.generate(12, (index) {
-                                return DropdownMenuItem(
-                                  value: index + 1,
-                                  child: Text(_months[index]),
-                                );
-                              }),
+                        Expanded(
+                          child: _dateFilterField(
+                            label: 'Month',
+                            child: MinimalDropdown<int>(
+                              value: _selectedMonth,
+                              items: List.generate(12, (i) => i + 1),
+                              itemLabel: (value) => _months[value - 1],
+                              fullWidth: true,
                               onChanged: (value) {
                                 setState(() {
                                   _selectedMonth =
@@ -592,64 +753,22 @@ class _TellerDashboardState extends State<TellerDashboard>
                               },
                             ),
                           ),
+                        ),
+                      ],
 
-                        if (_reportType == 'Monthly') const SizedBox(width: 10),
+                      const SizedBox(width: 10),
 
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: _selectedYear,
-                            isExpanded: true,
-                            dropdownColor: Colors.white,
-                            icon: Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: _primaryGreen,
+                      Expanded(
+                        child: _dateFilterField(
+                          label: 'Year',
+                          child: MinimalDropdown<int>(
+                            value: _selectedYear,
+                            items: List.generate(
+                              5,
+                              (i) => DateTime.now().year - 2 + i,
                             ),
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                            decoration: InputDecoration(
-                              labelText: 'Year',
-                              floatingLabelStyle: TextStyle(
-                                color: _primaryGreen,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen.withValues(alpha: 0.25),
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen.withValues(alpha: 0.25),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(
-                                  color: _primaryGreen,
-                                  width: 1.7,
-                                ),
-                              ),
-                              isDense: true,
-                            ),
-                            items: List.generate(5, (index) {
-                              final year = DateTime.now().year - 2 + index;
-
-                              return DropdownMenuItem(
-                                value: year,
-                                child: Text(year.toString()),
-                              );
-                            }),
+                            itemLabel: (value) => value.toString(),
+                            fullWidth: true,
                             onChanged: (value) {
                               setState(() {
                                 _selectedYear = value ?? DateTime.now().year;
@@ -657,8 +776,8 @@ class _TellerDashboardState extends State<TellerDashboard>
                             },
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 24),
@@ -666,19 +785,28 @@ class _TellerDashboardState extends State<TellerDashboard>
                   // ==================================================
                   // BILLS STREAM
                   //
-                  // UNCHANGED
+                  // Scoped to this teller's own branch — matches
+                  // Manage Bills, so the summary never shows another
+                  // branch's totals.
                   // ==================================================
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance
                         .collection('bills')
                         .snapshots(),
                     builder: (context, billSnapshot) {
-                      if (!billSnapshot.hasData) {
+                      if (!billSnapshot.hasData || _branchLoading) {
                         return const Center(child: CircularProgressIndicator());
                       }
 
                       final bills = billSnapshot.data!.docs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
+
+                        if (_branchMunicipality == null) return false;
+
+                        if (_getBillMunicipality(data).toLowerCase() !=
+                            _branchMunicipality!.toLowerCase()) {
+                          return false;
+                        }
 
                         return _isBillWithinSelectedPeriod(
                           data['generatedAt'] as Timestamp?,
@@ -730,6 +858,19 @@ class _TellerDashboardState extends State<TellerDashboard>
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          Text(
+                            _branchMunicipality ??
+                                'Branch not set — update your profile',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _branchMunicipality == null
+                                  ? Colors.red.shade600
+                                  : Colors.grey,
                             ),
                           ),
 
@@ -901,122 +1042,145 @@ class _TellerDashboardState extends State<TellerDashboard>
                       // CLASSIFICATION COUNTERS
                       // ------------------------------------------------
 
-                      int pendingComplaints = 0;
-                      int inProgressComplaints = 0;
-                      int resolvedComplaints = 0;
-
                       // ------------------------------------------------
-                      // CLASSIFY EVERY COMPLAINT
+                      // BRANCH FILTER (ASYNC — MAY NEED A CONSUMER
+                      // LOOKUP PER COMPLAINT)
                       // ------------------------------------------------
 
-                      for (final doc in complaints) {
-                        final data = doc.data() as Map<String, dynamic>;
+                      return FutureBuilder<List<QueryDocumentSnapshot>>(
+                        future: _branchLoading
+                            ? null
+                            : _filterComplaintsByBranch(complaints),
+                        builder: (context, branchSnapshot) {
+                          if (_branchLoading ||
+                              branchSnapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                        final normalizedStatus = _normalizeComplaintStatus(
-                          data['status'],
-                        );
+                          final branchComplaints =
+                              branchSnapshot.data ?? const [];
 
-                        switch (normalizedStatus) {
-                          case 'Pending':
-                            pendingComplaints++;
-                            break;
+                          int pendingComplaints = 0;
+                          int inProgressComplaints = 0;
+                          int resolvedComplaints = 0;
 
-                          case 'In Progress':
-                            inProgressComplaints++;
-                            break;
+                          // --------------------------------------------
+                          // CLASSIFY EVERY COMPLAINT
+                          // --------------------------------------------
 
-                          case 'Resolved':
-                            resolvedComplaints++;
-                            break;
-                        }
-                      }
+                          for (final doc in branchComplaints) {
+                            final data = doc.data() as Map<String, dynamic>;
 
-                      // ------------------------------------------------
-                      // TOTAL
-                      //
-                      // This is based directly on every complaint
-                      // that passed the period check.
-                      // ------------------------------------------------
+                            final normalizedStatus = _normalizeComplaintStatus(
+                              data['status'],
+                            );
 
-                      final totalComplaints = complaints.length;
+                            switch (normalizedStatus) {
+                              case 'Pending':
+                                pendingComplaints++;
+                                break;
 
-                      // ------------------------------------------------
-                      // RETURN SUMMARY
-                      // ------------------------------------------------
+                              case 'In Progress':
+                                inProgressComplaints++;
+                                break;
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Complaints Summary',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                              case 'Resolved':
+                                resolvedComplaints++;
+                                break;
+                            }
+                          }
 
-                          const SizedBox(height: 6),
+                          // --------------------------------------------
+                          // TOTAL
+                          //
+                          // This is based directly on every complaint
+                          // that passed the period and branch checks.
+                          // --------------------------------------------
 
-                          Text(
-                            _reportType == 'Monthly'
-                                ? '${_months[_selectedMonth - 1]} $_selectedYear'
-                                : 'Year $_selectedYear',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
+                          final totalComplaints = branchComplaints.length;
 
-                          const SizedBox(height: 12),
+                          // --------------------------------------------
+                          // RETURN SUMMARY
+                          // --------------------------------------------
 
-                          // ==========================================
-                          // TOTAL + PENDING
-                          // ==========================================
-                          Row(
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _summaryCard(
-                                title: 'Total Complaints',
-                                value: totalComplaints.toString(),
-                                icon: Icons.report_problem,
-                                color: Colors.red,
+                              const Text(
+                                'Complaints Summary',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
 
-                              const SizedBox(width: 10),
+                              const SizedBox(height: 6),
 
-                              _summaryCard(
-                                title: 'Pending',
-                                value: pendingComplaints.toString(),
-                                icon: Icons.pending,
-                                color: Colors.orange,
+                              Text(
+                                _reportType == 'Monthly'
+                                    ? '${_branchMunicipality ?? 'No branch'} · ${_months[_selectedMonth - 1]} $_selectedYear'
+                                    : '${_branchMunicipality ?? 'No branch'} · Year $_selectedYear',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // ==========================================
+                              // TOTAL + PENDING
+                              // ==========================================
+                              Row(
+                                children: [
+                                  _summaryCard(
+                                    title: 'Total Complaints',
+                                    value: totalComplaints.toString(),
+                                    icon: Icons.report_problem,
+                                    color: Colors.red,
+                                  ),
+
+                                  const SizedBox(width: 10),
+
+                                  _summaryCard(
+                                    title: 'Pending',
+                                    value: pendingComplaints.toString(),
+                                    icon: Icons.pending,
+                                    color: Colors.orange,
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // ==========================================
+                              // IN PROGRESS + RESOLVED
+                              // ==========================================
+                              Row(
+                                children: [
+                                  _summaryCard(
+                                    title: 'In Progress',
+                                    value: inProgressComplaints.toString(),
+                                    icon: Icons.autorenew,
+                                    color: Colors.blue,
+                                  ),
+
+                                  const SizedBox(width: 10),
+
+                                  _summaryCard(
+                                    title: 'Resolved',
+                                    value: resolvedComplaints.toString(),
+                                    icon: Icons.task_alt,
+                                    color: Colors.green,
+                                  ),
+                                ],
                               ),
                             ],
-                          ),
-
-                          const SizedBox(height: 10),
-
-                          // ==========================================
-                          // IN PROGRESS + RESOLVED
-                          // ==========================================
-                          Row(
-                            children: [
-                              _summaryCard(
-                                title: 'In Progress',
-                                value: inProgressComplaints.toString(),
-                                icon: Icons.autorenew,
-                                color: Colors.blue,
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              _summaryCard(
-                                title: 'Resolved',
-                                value: resolvedComplaints.toString(),
-                                icon: Icons.task_alt,
-                                color: Colors.green,
-                              ),
-                            ],
-                          ),
-                        ],
+                          );
+                        },
                       );
                     },
                   ),
@@ -1024,59 +1188,6 @@ class _TellerDashboardState extends State<TellerDashboard>
               ),
             ),
           ),
-        ),
-      ),
-
-      // ========================================================
-      // BOTTOM NAVIGATION
-      // ========================================================
-      bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          currentIndex: 0,
-          elevation: 12,
-
-          onTap: (index) {
-            final destinations = [
-              const TellerDashboard(),
-              const ManageBillsScreen(),
-              const GenerateReportScreen(),
-              const ManageComplaintsScreen(),
-              const StaffProfileScreen(role: 'Teller', userTypeValue: 'teller'),
-            ];
-
-            if (index != 0) {
-              Navigator.push(context, smoothPageRoute(destinations[index]));
-            }
-          },
-
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              label: 'Home',
-            ),
-
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long),
-              label: 'Bills',
-            ),
-
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assessment),
-              label: 'Reports',
-            ),
-
-            BottomNavigationBarItem(
-              icon: Icon(Icons.manage_accounts),
-              label: 'Complaints',
-            ),
-
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: 'Profile',
-            ),
-          ],
         ),
       ),
     );

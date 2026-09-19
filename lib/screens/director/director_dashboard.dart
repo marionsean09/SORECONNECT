@@ -1,6 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:soreconnect/screens/director/monitor_bills_screen.dart';
 import 'package:soreconnect/screens/director/monitor_complaints_screen.dart';
@@ -10,9 +12,23 @@ import 'package:soreconnect/screens/director/rate_management_screen.dart';
 import 'package:soreconnect/screens/announcements/post_announcement_screen.dart';
 import 'package:soreconnect/screens/announcements/view_announcements_screen.dart';
 
-import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
 import 'package:soreconnect/utils/pending_email_guard.dart';
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
+
+// ============================================================
+// DIRECTOR DASHBOARD (TAB SHELL)
+//
+// Hosts Home/Bills/Complaints/Reports as sibling pages in one
+// PageView — see consumer_dashboard.dart for the full rationale
+// (no back arrow, swipeable, each tab keeps its state alive).
+//
+// "More" stays a bottom sheet rather than becoming a 5th page:
+// it's a menu that launches other screens (Rate Management, Post/
+// View Announcements, My Profile), not a destination of its own,
+// so turning it into a swipeable page would change what it does
+// rather than just how you get there.
+// ============================================================
 
 class DirectorDashboard extends StatefulWidget {
   const DirectorDashboard({super.key});
@@ -23,9 +39,212 @@ class DirectorDashboard extends StatefulWidget {
 
 class _DirectorDashboardState extends State<DirectorDashboard> {
   static const Color _primaryGreen = Color(0xFF1B5E20);
-  static const Color _accentGold = Color(0xFFDAA520);
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Strong ease-out — starts fast so a tapped tab feels immediate
+  // rather than a generic linear/ease-in-out glide.
+  static const Curve _tabCurve = Cubic(0.23, 1, 0.32, 1);
+
+  late final PageController _pageController;
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = const [
+    _DirectorHomeTab(),
+    MonitorBillsScreen(),
+    MonitorComplaintsScreen(),
+    MonitorReportsScreen(),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pageController = PageController();
+
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goToTab(int index) {
+    if (index == _currentIndex) return;
+
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: _tabCurve,
+    );
+  }
+
+  void _handleNavTap(int index) {
+    if (index == 4) {
+      _showMoreMenu();
+      return;
+    }
+
+    _goToTab(index);
+  }
+
+  void _showMoreMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              // RATE MANAGEMENT
+              ListTile(
+                leading: const Icon(Icons.electric_bolt),
+                title: const Text('Rate Management'),
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RateManagementScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              // POST ANNOUNCEMENT
+              ListTile(
+                leading: const Icon(Icons.campaign),
+                title: const Text('Post Announcements'),
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PostAnnouncementScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              // VIEW ANNOUNCEMENTS
+              ListTile(
+                leading: const Icon(Icons.announcement),
+                title: const Text('View Announcements'),
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ViewAnnouncementsScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              // MY PROFILE
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: const Text('My Profile'),
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const StaffProfileScreen(
+                        role: 'Director',
+                        userTypeValue: 'director',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: _pages,
+      ),
+
+      // ========================================================
+      // DIRECTOR BOTTOM NAVIGATION
+      // ========================================================
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _currentIndex,
+        selectedItemColor: _primaryGreen,
+        onTap: _handleNavTap,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            label: 'Home',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Bills',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.report_problem),
+            label: 'Complaints',
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart),
+            label: 'Reports',
+          ),
+
+          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME TAB
+//
+// Unchanged from the dashboard's previous single-screen body —
+// only relocated here so it can live as its own PageView page
+// with its own keep-alive state, same as every other tab.
+// ============================================================
+
+class _DirectorHomeTab extends StatefulWidget {
+  const _DirectorHomeTab();
+
+  @override
+  State<_DirectorHomeTab> createState() => _DirectorHomeTabState();
+}
+
+class _DirectorHomeTabState extends State<_DirectorHomeTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  static const Color _primaryGreen = Color(0xFF1B5E20);
+  static const Color _accentGold = Color(0xFFDAA520);
 
   // ============================================================
   // REPORT FILTER
@@ -52,35 +271,166 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
   ];
 
   // ============================================================
-  // INIT
+  // BRANCH
+  //
+  // Bills/complaints summaries are scoped to this director's own
+  // branch, the same one Monitor Bills/Complaints locks to —
+  // listened live so changing it in Profile updates these totals
+  // immediately instead of leaving stale numbers from the old
+  // branch on screen.
   // ============================================================
+
+  String? _branchMunicipality;
+  bool _branchLoading = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
+  // Resolves a complaint's municipality when it isn't stored
+  // directly on the complaint — keyed by consumer uid, since a
+  // complaint only records the location itself when the consumer
+  // attached one at submission time.
+  final Map<String, String> _consumerMunicipalityCache = {};
 
   @override
   void initState() {
     super.initState();
+    _listenToBranch();
+  }
 
-    // Safety net: finishes signing out if an email change was
-    // confirmed while this screen wasn't the one watching for it
-    // (e.g. backed out of the verify screen, or the app was
-    // backgrounded when the confirmation link was tapped).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) checkPendingEmailConfirmed(context);
-    });
+  @override
+  void dispose() {
+    _branchSub?.cancel();
+    super.dispose();
+  }
+
+  void _listenToBranch() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
+
+    _branchSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+
+            final municipality = doc.data()?['municipality']?.toString();
+
+            setState(() {
+              _branchMunicipality =
+                  (municipality != null && municipality.isNotEmpty)
+                  ? municipality
+                  : null;
+              _branchLoading = false;
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
+  }
+
+  String _getBillMunicipality(Map<String, dynamic> data) {
+    final value = data['municipality'] ?? data['city'];
+    return (value ?? '').toString().trim();
+  }
+
+  // Complaints don't store a location at submission time, so this
+  // falls back to the consumer's own profile municipality — cached
+  // per consumer so repeated complaints from the same consumer
+  // don't re-fetch it.
+  Future<String> _getComplaintMunicipality(Map<String, dynamic> data) async {
+    final direct =
+        (data['municipality'] ??
+                data['municipalityName'] ??
+                data['city'] ??
+                data['cityName'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (direct.isNotEmpty) return direct;
+
+    final consumerId =
+        (data['consumerId'] ??
+                data['consumerID'] ??
+                data['uid'] ??
+                data['userId'] ??
+                data['consumerUID'] ??
+                data['consumerUid'] ??
+                '')
+            .toString()
+            .trim();
+
+    if (consumerId.isEmpty) return '';
+
+    if (_consumerMunicipalityCache.containsKey(consumerId)) {
+      return _consumerMunicipalityCache[consumerId]!;
+    }
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(consumerId)
+          .get();
+
+      final municipality = (userDoc.data()?['municipality'] ?? '')
+          .toString()
+          .trim();
+
+      _consumerMunicipalityCache[consumerId] = municipality;
+
+      return municipality;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<List<QueryDocumentSnapshot>> _filterComplaintsByBranch(
+    List<QueryDocumentSnapshot> docs,
+  ) async {
+    if (_branchMunicipality == null) return const [];
+
+    final result = <QueryDocumentSnapshot>[];
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+
+      final municipality = await _getComplaintMunicipality(data);
+
+      if (municipality.toLowerCase() == _branchMunicipality!.toLowerCase()) {
+        result.add(doc);
+      }
+    }
+
+    return result;
   }
 
   // ============================================================
-  // LOGOUT
+  // DATE FILTER FIELD (label + minimal dropdown)
   // ============================================================
 
-  Future<void> _logout() async {
-    await _auth.signOut();
-
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-    }
+  Widget _dateFilterField({required String label, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        child,
+      ],
+    );
   }
 
   // ============================================================
@@ -203,7 +553,7 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _auth.currentUser;
+    super.build(context);
 
     return Scaffold(
       // ========================================================
@@ -211,13 +561,29 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
       // ========================================================
 
       appBar: AppBar(
-        title: const Text('Director Dashboard'),
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/soreco_logo.png',
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(
+              child: Text(
+                'SORECONNECT',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
       ),
 
       // ========================================================
@@ -269,22 +635,11 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Welcome, ${user?.email ?? 'Director'}',
+                            'WELCOME, DIRECTOR',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: _primaryGreen,
-                            ),
-                          ),
-
-                          const SizedBox(height: 4),
-
-                          const Text(
-                            'Role: DIRECTOR',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black54,
                             ),
                           ),
 
@@ -304,90 +659,18 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
               const SizedBox(height: 24),
 
               // ==================================================
-              // MONTHLY / YEARLY FILTER
+              // DATE FILTER (View / Month / Year)
               // ==================================================
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF7F9F4),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: _primaryGreen.withValues(alpha: 0.16),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _accentGold.withValues(alpha: 0.08),
-                      blurRadius: 14,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // VIEW
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _reportType,
-                        isExpanded: true,
-                        dropdownColor: Colors.white,
-                        icon: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: _primaryGreen,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'View',
-                          floatingLabelStyle: TextStyle(
-                            color: _primaryGreen,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen,
-                              width: 1.7,
-                            ),
-                          ),
-                          prefixIcon: Icon(
-                            Icons.calendar_month_outlined,
-                            color: _primaryGreen,
-                            size: 18,
-                          ),
-                          isDense: true,
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Monthly',
-                            child: Text('Monthly'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Yearly',
-                            child: Text('Yearly'),
-                          ),
-                        ],
+              Row(
+                children: [
+                  Expanded(
+                    child: _dateFilterField(
+                      label: 'View',
+                      child: MinimalDropdown<String>(
+                        value: _reportType,
+                        items: const ['Monthly', 'Yearly'],
+                        itemLabel: (value) => value,
+                        fullWidth: true,
                         onChanged: (value) {
                           setState(() {
                             _reportType = value ?? 'Monthly';
@@ -395,64 +678,18 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                         },
                       ),
                     ),
+                  ),
 
+                  if (_reportType == 'Monthly') ...[
                     const SizedBox(width: 10),
-
-                    // MONTH
-                    if (_reportType == 'Monthly')
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _selectedMonth,
-                          isExpanded: true,
-                          dropdownColor: Colors.white,
-                          icon: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: _primaryGreen,
-                          ),
-                          style: const TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                          decoration: InputDecoration(
-                            labelText: 'Month',
-                            floatingLabelStyle: TextStyle(
-                              color: _primaryGreen,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(
-                                color: _primaryGreen.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(
-                                color: _primaryGreen.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(
-                                color: _primaryGreen,
-                                width: 1.7,
-                              ),
-                            ),
-                            isDense: true,
-                          ),
-                          items: List.generate(12, (index) {
-                            return DropdownMenuItem<int>(
-                              value: index + 1,
-                              child: Text(_months[index]),
-                            );
-                          }),
+                    Expanded(
+                      child: _dateFilterField(
+                        label: 'Month',
+                        child: MinimalDropdown<int>(
+                          value: _selectedMonth,
+                          items: List.generate(12, (i) => i + 1),
+                          itemLabel: (value) => _months[value - 1],
+                          fullWidth: true,
                           onChanged: (value) {
                             setState(() {
                               _selectedMonth = value ?? DateTime.now().month;
@@ -460,65 +697,22 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                           },
                         ),
                       ),
+                    ),
+                  ],
 
-                    if (_reportType == 'Monthly') const SizedBox(width: 10),
+                  const SizedBox(width: 10),
 
-                    // YEAR
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _selectedYear,
-                        isExpanded: true,
-                        dropdownColor: Colors.white,
-                        icon: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: _primaryGreen,
+                  Expanded(
+                    child: _dateFilterField(
+                      label: 'Year',
+                      child: MinimalDropdown<int>(
+                        value: _selectedYear,
+                        items: List.generate(
+                          5,
+                          (i) => DateTime.now().year - 2 + i,
                         ),
-                        style: const TextStyle(
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Year',
-                          floatingLabelStyle: TextStyle(
-                            color: _primaryGreen,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen.withValues(alpha: 0.25),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide(
-                              color: _primaryGreen,
-                              width: 1.7,
-                            ),
-                          ),
-                          isDense: true,
-                        ),
-                        items: List.generate(5, (index) {
-                          final year = DateTime.now().year - 2 + index;
-
-                          return DropdownMenuItem<int>(
-                            value: year,
-                            child: Text(year.toString()),
-                          );
-                        }),
+                        itemLabel: (value) => value.toString(),
+                        fullWidth: true,
                         onChanged: (value) {
                           setState(() {
                             _selectedYear = value ?? DateTime.now().year;
@@ -526,8 +720,8 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                         },
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 24),
@@ -541,12 +735,19 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                     .snapshots(),
 
                 builder: (context, billSnapshot) {
-                  if (!billSnapshot.hasData) {
+                  if (!billSnapshot.hasData || _branchLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
                   final bills = billSnapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
+
+                    if (_branchMunicipality == null) return false;
+
+                    if (_getBillMunicipality(data).toLowerCase() !=
+                        _branchMunicipality!.toLowerCase()) {
+                      return false;
+                    }
 
                     return _isBillWithinSelectedPeriod(
                       data['generatedAt'] as Timestamp?,
@@ -610,6 +811,19 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        _branchMunicipality ??
+                            'Branch not set — update your profile',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _branchMunicipality == null
+                              ? Colors.red.shade600
+                              : Colors.grey,
                         ),
                       ),
 
@@ -713,256 +927,153 @@ class _DirectorDashboardState extends State<DirectorDashboard> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  // FILTER COMPLAINTS
+                  // FILTER COMPLAINTS BY PERIOD
                   final complaints = complaintSnapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
 
                     return _isComplaintWithinSelectedPeriod(data);
                   }).toList();
 
-                  // TOTAL
-                  final totalComplaints = complaints.length;
+                  // FILTER BY BRANCH (ASYNC — MAY NEED A CONSUMER
+                  // LOOKUP PER COMPLAINT)
+                  return FutureBuilder<List<QueryDocumentSnapshot>>(
+                    future: _branchLoading
+                        ? null
+                        : _filterComplaintsByBranch(complaints),
+                    builder: (context, branchSnapshot) {
+                      if (_branchLoading ||
+                          branchSnapshot.connectionState ==
+                              ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  // PENDING
-                  final pendingComplaints = complaints.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                      final branchComplaints = branchSnapshot.data ?? const [];
 
-                    final status = (data['status'] ?? '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                      // TOTAL
+                      final totalComplaints = branchComplaints.length;
 
-                    return status == 'pending';
-                  }).length;
+                      // PENDING
+                      final pendingComplaints = branchComplaints.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
 
-                  // IN PROGRESS
-                  final inProgressComplaints = complaints.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
 
-                    final status = (data['status'] ?? '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                        return status == 'pending';
+                      }).length;
 
-                    return status == 'in progress' ||
-                        status == 'in_progress' ||
-                        status == 'inprogress';
-                  }).length;
+                      // IN PROGRESS
+                      final inProgressComplaints = branchComplaints.where((
+                        doc,
+                      ) {
+                        final data = doc.data() as Map<String, dynamic>;
 
-                  // RESOLVED
-                  final resolvedComplaints = complaints.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
 
-                    final status = (data['status'] ?? '')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                        return status == 'in progress' ||
+                            status == 'in_progress' ||
+                            status == 'inprogress';
+                      }).length;
 
-                    return status == 'resolved';
-                  }).length;
+                      // RESOLVED
+                      final resolvedComplaints = branchComplaints.where((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Complaints Summary',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                        final status = (data['status'] ?? '')
+                            .toString()
+                            .trim()
+                            .toLowerCase();
 
-                      const SizedBox(height: 12),
+                        return status == 'resolved';
+                      }).length;
 
-                      // ------------------------------------------
-                      // TOTAL + PENDING
-                      // ------------------------------------------
-                      Row(
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _summaryCard(
-                            title: 'Total Complaints',
-                            value: totalComplaints.toString(),
-                            icon: Icons.report_problem,
-                            color: Colors.red,
+                          const Text(
+                            'Complaints Summary',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
 
-                          const SizedBox(width: 10),
+                          const SizedBox(height: 6),
 
-                          _summaryCard(
-                            title: 'Pending',
-                            value: pendingComplaints.toString(),
-                            icon: Icons.pending,
-                            color: Colors.orange,
+                          Text(
+                            _branchMunicipality ??
+                                'Branch not set — update your profile',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _branchMunicipality == null
+                                  ? Colors.red.shade600
+                                  : Colors.grey,
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // --------------------------------------
+                          // TOTAL + PENDING
+                          // --------------------------------------
+                          Row(
+                            children: [
+                              _summaryCard(
+                                title: 'Total Complaints',
+                                value: totalComplaints.toString(),
+                                icon: Icons.report_problem,
+                                color: Colors.red,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Pending',
+                                value: pendingComplaints.toString(),
+                                icon: Icons.pending,
+                                color: Colors.orange,
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          // --------------------------------------
+                          // IN PROGRESS + RESOLVED
+                          // --------------------------------------
+                          Row(
+                            children: [
+                              _summaryCard(
+                                title: 'In Progress',
+                                value: inProgressComplaints.toString(),
+                                icon: Icons.autorenew,
+                                color: Colors.blue,
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              _summaryCard(
+                                title: 'Resolved',
+                                value: resolvedComplaints.toString(),
+                                icon: Icons.task_alt,
+                                color: Colors.green,
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      // ------------------------------------------
-                      // IN PROGRESS + RESOLVED
-                      // ------------------------------------------
-                      Row(
-                        children: [
-                          _summaryCard(
-                            title: 'In Progress',
-                            value: inProgressComplaints.toString(),
-                            icon: Icons.autorenew,
-                            color: Colors.blue,
-                          ),
-
-                          const SizedBox(width: 10),
-
-                          _summaryCard(
-                            title: 'Resolved',
-                            value: resolvedComplaints.toString(),
-                            icon: Icons.task_alt,
-                            color: Colors.green,
-                          ),
-                        ],
-                      ),
-                    ],
+                      );
+                    },
                   );
                 },
               ),
             ],
           ),
         ),
-      ),
-
-      // ========================================================
-      // DIRECTOR BOTTOM NAVIGATION
-      // ========================================================
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: 0,
-
-        onTap: (index) {
-          // HOME
-          if (index == 0) {
-            return;
-          }
-
-          // MORE
-          if (index == 4) {
-            showModalBottomSheet<void>(
-              context: context,
-              builder: (context) {
-                return SafeArea(
-                  child: Wrap(
-                    children: [
-                      // RATE MANAGEMENT
-                      ListTile(
-                        leading: const Icon(Icons.electric_bolt),
-                        title: const Text('Rate Management'),
-                        onTap: () {
-                          Navigator.pop(context);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const RateManagementScreen(),
-                            ),
-                          );
-                        },
-                      ),
-
-                      // POST ANNOUNCEMENT
-                      ListTile(
-                        leading: const Icon(Icons.campaign),
-                        title: const Text('Post Announcements'),
-                        onTap: () {
-                          Navigator.pop(context);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const PostAnnouncementScreen(),
-                            ),
-                          );
-                        },
-                      ),
-
-                      // VIEW ANNOUNCEMENTS
-                      ListTile(
-                        leading: const Icon(Icons.announcement),
-                        title: const Text('View Announcements'),
-                        onTap: () {
-                          Navigator.pop(context);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const ViewAnnouncementsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-
-                      // MY PROFILE
-                      ListTile(
-                        leading: const Icon(Icons.person_outline),
-                        title: const Text('My Profile'),
-                        onTap: () {
-                          Navigator.pop(context);
-
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const StaffProfileScreen(
-                                role: 'Director',
-                                userTypeValue: 'director',
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-
-            return;
-          }
-
-          // DIRECTOR DESTINATIONS
-          final destinations = [
-            const DirectorDashboard(),
-            const MonitorBillsScreen(),
-            const MonitorComplaintsScreen(),
-            const MonitorReportsScreen(),
-          ];
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => destinations[index]),
-          );
-        },
-
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            label: 'Home',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long),
-            label: 'Bills',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.report_problem),
-            label: 'Complaints',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Reports',
-          ),
-
-          BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'More'),
-        ],
       ),
     );
   }

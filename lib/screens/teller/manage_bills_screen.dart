@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -25,7 +27,13 @@ class ManageBillsScreen extends StatefulWidget {
 }
 
 class _ManageBillsScreenState extends State<ManageBillsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (filters, scroll position) alive when
+  // swiping to another bottom-nav tab, instead of disposing and
+  // rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -44,6 +52,13 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
   String _selectedMunicipality = 'All Municipalities';
   String _selectedBarangay = 'Select Municipality First';
 
+  // Whether this teller's fixed branch (from their profile) is still
+  // being fetched. The municipality filter is no longer picked by
+  // hand — it's locked to the teller's own assigned branch, and only
+  // the barangay stays freely selectable within it.
+  bool _branchLoading = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
   final TextEditingController _searchController =
       TextEditingController();
   String _searchQuery = '';
@@ -59,6 +74,8 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
   @override
   void initState() {
     super.initState();
+
+    _listenToBranch();
 
     _entranceController = AnimationController(
       vsync: this,
@@ -78,10 +95,70 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
     _entranceController.forward();
   }
 
+  // ============================================================
+  // LISTEN TO BRANCH
+  //
+  // The location filter is locked to this teller's own assigned
+  // branch, set in their profile. That branch stays editable there,
+  // so this listens live (not a one-off fetch) — if it's changed
+  // mid-session, this filter picks it up immediately instead of
+  // showing a stale municipality.
+  // ============================================================
+
+  void _listenToBranch() {
+    final uid = _auth.currentUser?.uid;
+
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
+
+    _branchSub = _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+
+            final municipality = doc.data()?['municipality']?.toString();
+
+            final resolved =
+                (municipality != null &&
+                    municipality.isNotEmpty &&
+                    getSorsogonSecondDistrictMunicipalities().contains(
+                      municipality,
+                    ))
+                ? municipality
+                : 'All Municipalities';
+
+            final changed = resolved != _selectedMunicipality;
+
+            setState(() {
+              _selectedMunicipality = resolved;
+              _branchLoading = false;
+
+              // The branch changed (e.g. reassigned from profile) —
+              // drop any barangay picked under the old municipality.
+              if (changed) {
+                _selectedBarangay = resolved == 'All Municipalities'
+                    ? 'Select Municipality First'
+                    : 'All Barangays';
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
+  }
+
   @override
   void dispose() {
     _entranceController.dispose();
     _searchController.dispose();
+    _branchSub?.cancel();
     super.dispose();
   }
 
@@ -439,8 +516,26 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
                 initialValue: selectedStatus,
                 decoration: InputDecoration(
                   labelText: 'Status',
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 14,
+                  ),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: primaryOrange,
+                      width: 1.5,
+                    ),
                   ),
                 ),
                 items: statuses.map((status) {
@@ -606,9 +701,53 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
     );
   }
 
-  Widget _buildFilterBar() {
-    final municipalities = getSorsogonSecondDistrictMunicipalities();
+  // ============================================================
+  // BRANCH DISPLAY (LOCKED)
+  //
+  // The municipality is no longer a dropdown — it's this teller's
+  // own fixed branch, set once in their profile.
+  // ============================================================
 
+  Widget _buildBranchLocked() {
+    final unset = !_branchLoading && _selectedMunicipality == 'All Municipalities';
+
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_city,
+            size: 18,
+            color: unset ? Colors.grey.shade400 : Colors.grey.shade600,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _branchLoading
+                  ? 'Loading your branch...'
+                  : (unset
+                      ? 'Branch not set — update your profile'
+                      : _selectedMunicipality),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: unset ? Colors.red.shade600 : Colors.grey.shade800,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
     final municipalitySelected =
         _selectedMunicipality != 'All Municipalities';
 
@@ -698,21 +837,7 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
             ],
           ),
           const SizedBox(height: 12),
-          _buildLocationDropdown(
-            icon: Icons.location_city,
-            value: _selectedMunicipality,
-            items: ['All Municipalities', ...municipalities],
-            enabled: true,
-            hint: 'All Municipalities',
-            onChanged: (value) {
-              setState(() {
-                _selectedMunicipality = value;
-                _selectedBarangay = value == 'All Municipalities'
-                    ? 'Select Municipality First'
-                    : 'All Barangays';
-              });
-            },
-          ),
+          _buildBranchLocked(),
           const SizedBox(height: 12),
           _buildLocationDropdown(
             icon: Icons.location_on,
@@ -890,6 +1015,8 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
       fallback: 'N/A',
     );
 
+    final ticketNumber = BillModel.ticketNumberFor(data, doc.id);
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _showBillDetailSheet(doc),
@@ -919,14 +1046,27 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _getConsumerName(data),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: primaryOrange,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          _getConsumerName(data),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -1360,6 +1500,8 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Bills'),

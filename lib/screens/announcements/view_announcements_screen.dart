@@ -33,7 +33,14 @@ class ViewAnnouncementsScreen extends StatefulWidget {
 }
 
 class _ViewAnnouncementsScreenState
-    extends State<ViewAnnouncementsScreen> {
+    extends State<ViewAnnouncementsScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (scroll position, filters, active
+  // Firestore listener) alive when swiping to another bottom-nav
+  // tab, instead of disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   // ============================================================
   // SORT OPTION
   // ============================================================
@@ -289,6 +296,8 @@ class _ViewAnnouncementsScreenState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(

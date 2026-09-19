@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
 import 'package:soreconnect/models/bill_model.dart';
@@ -15,7 +18,14 @@ class MonitorBillsScreen extends StatefulWidget {
   State<MonitorBillsScreen> createState() => _MonitorBillsScreenState();
 }
 
-class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
+class _MonitorBillsScreenState extends State<MonitorBillsScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (filters, scroll position) alive when
+  // swiping to another bottom-nav tab, instead of disposing and
+  // rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   // ============================================================
   // SORT
   // ============================================================
@@ -35,6 +45,13 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   String _selectedMunicipality = 'All Municipalities';
   String _selectedBarangay = 'All Barangays';
 
+  // Whether this director's fixed branch (from their profile) is
+  // still being fetched. The municipality filter is no longer picked
+  // by hand — it's locked to the director's own assigned branch, and
+  // only the barangay stays freely selectable within it.
+  bool _branchLoading = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
   // ============================================================
   // SEARCH
   // ============================================================
@@ -44,9 +61,118 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
   String _searchQuery = '';
 
   @override
+  void initState() {
+    super.initState();
+    _listenToBranch();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _branchSub?.cancel();
     super.dispose();
+  }
+
+  // ============================================================
+  // LISTEN TO BRANCH
+  //
+  // The location filter is locked to this director's own assigned
+  // branch, set in their profile. That branch stays editable there,
+  // so this listens live (not a one-off fetch) — if it's changed
+  // mid-session, this filter picks it up immediately instead of
+  // showing a stale municipality.
+  // ============================================================
+
+  void _listenToBranch() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
+
+    _branchSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
+
+            final municipality = doc.data()?['municipality']?.toString();
+
+            final resolved =
+                (municipality != null &&
+                    municipality.isNotEmpty &&
+                    getSorsogonSecondDistrictMunicipalities().contains(
+                      municipality,
+                    ))
+                ? municipality
+                : 'All Municipalities';
+
+            final changed = resolved != _selectedMunicipality;
+
+            setState(() {
+              _selectedMunicipality = resolved;
+              _branchLoading = false;
+
+              // The branch changed (e.g. reassigned from profile) —
+              // drop any barangay picked under the old municipality.
+              if (changed) {
+                _selectedBarangay = 'All Barangays';
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
+  }
+
+  // ============================================================
+  // BRANCH DISPLAY (LOCKED)
+  //
+  // The municipality is no longer a dropdown — it's this director's
+  // own fixed branch, set once in their profile.
+  // ============================================================
+
+  Widget _buildBranchLocked() {
+    final unset =
+        !_branchLoading && _selectedMunicipality == 'All Municipalities';
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_city,
+            size: 18,
+            color: unset ? Colors.grey : Colors.orange,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              _branchLoading
+                  ? 'Loading branch...'
+                  : (unset ? 'Branch not set' : _selectedMunicipality),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: unset ? Colors.red.shade600 : Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400),
+        ],
+      ),
+    );
   }
 
   // ============================================================
@@ -565,6 +691,8 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final availableBarangays = _getAvailableBarangays();
 
     return Scaffold(
@@ -790,71 +918,9 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen> {
 
                 Row(
                   children: [
-                    // MUNICIPALITY
+                    // MUNICIPALITY (LOCKED TO OWN BRANCH)
 
-                    Expanded(
-                      child: Container(
-                        height: 48,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: _selectedMunicipality,
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down,
-                              size: 20,
-                              color: Colors.grey,
-                            ),
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            items: [
-                              const DropdownMenuItem<String>(
-                                value: 'All Municipalities',
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.location_city,
-                                      size: 18,
-                                      color: Colors.orange,
-                                    ),
-                                    SizedBox(width: 7),
-                                    Text('All Municipalities'),
-                                  ],
-                                ),
-                              ),
-                              ...getSorsogonSecondDistrictMunicipalities().map(
-                                (municipality) {
-                                  return DropdownMenuItem<String>(
-                                    value: municipality,
-                                    child: Text(
-                                      municipality,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value == null) return;
-
-                              setState(() {
-                                _selectedMunicipality = value;
-                                _selectedBarangay = 'All Barangays';
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
+                    Expanded(child: _buildBranchLocked()),
 
                     const SizedBox(width: 8),
 

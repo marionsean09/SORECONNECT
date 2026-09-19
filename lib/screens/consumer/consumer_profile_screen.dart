@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/screens/auth/verify_email_screen.dart';
 
 // ============================================================
@@ -27,7 +28,14 @@ class ConsumerProfileScreen extends StatefulWidget {
       _ConsumerProfileScreenState();
 }
 
-class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
+class _ConsumerProfileScreenState extends State<ConsumerProfileScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (edit mode, unsaved field edits) alive
+  // when swiping to another bottom-nav tab, instead of disposing
+  // and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
@@ -51,6 +59,12 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
   String? _selectedMunicipality;
   String? _selectedBarangay;
 
+  // The municipality as loaded from Firestore — once set, it's
+  // locked (only barangay stays editable), since a consumer's
+  // municipality also drives which branch's staff handle their
+  // account. Null only means "not yet set."
+  String? _originalMunicipality;
+
   // ============================================================
   // PROFILE STATE
   // ============================================================
@@ -59,6 +73,7 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
   bool _savingProfile = false;
   bool _profileLoaded = false;
   bool _saveButtonPressed = false;
+  bool _logoutButtonPressed = false;
 
   // An email change the consumer has started (Firebase sent a
   // confirmation link) but not yet confirmed by tapping it. Kept in
@@ -150,6 +165,52 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
           ],
         );
       },
+    );
+  }
+
+  // ============================================================
+  // LOGOUT
+  // ============================================================
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    await _auth.signOut();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
     );
   }
 
@@ -265,6 +326,7 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
       if (mounted) {
         setState(() {
           _selectedMunicipality = municipality;
+          _originalMunicipality = municipality;
           _selectedBarangay = barangay;
           _profileLoaded = true;
         });
@@ -1091,7 +1153,10 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
           icon: Icons.location_city_outlined,
           value: _selectedMunicipality,
           items: _municipalities,
-          enabled: _editingProfile,
+          // Once a municipality has been saved, it's locked — only
+          // barangay stays editable, since municipality also
+          // determines which branch's staff handle this account.
+          enabled: _editingProfile && _originalMunicipality == null,
           onChanged: (value) {
             setState(() {
               _selectedMunicipality = value;
@@ -1101,6 +1166,15 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
             });
           },
         ),
+
+        if (_originalMunicipality != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Your municipality is locked once set.',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            ),
+          ),
 
         // ======================================================
         // BARANGAY
@@ -1175,11 +1249,53 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
   }
 
   // ============================================================
+  // LOGOUT BUTTON
+  // ============================================================
+
+  Widget _logoutButton() {
+    return Listener(
+      onPointerDown: (_) => setState(() => _logoutButtonPressed = true),
+      onPointerUp: (_) => setState(() => _logoutButtonPressed = false),
+      onPointerCancel: (_) => setState(() => _logoutButtonPressed = false),
+      child: AnimatedScale(
+        scale: _logoutButtonPressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _logout,
+            icon: Icon(Icons.logout, size: 19, color: Colors.red.shade600),
+            label: Text(
+              'Log Out',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.3,
+                color: Colors.red.shade600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: BorderSide(color: Colors.red.shade200),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final user = _auth.currentUser;
 
     return Scaffold(
@@ -1695,6 +1811,14 @@ class _ConsumerProfileScreenState extends State<ConsumerProfileScreen> {
                           ],
                         ),
                       ),
+
+                      const SizedBox(height: 24),
+
+                      // ==================================================
+                      // LOGOUT
+                      // ==================================================
+
+                      _logoutButton(),
                     ],
                   ),
                 ),

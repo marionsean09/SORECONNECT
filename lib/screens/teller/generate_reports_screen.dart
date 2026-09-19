@@ -13,7 +13,12 @@ class GenerateReportScreen extends StatefulWidget {
 
 class _GenerateReportScreenState
     extends State<GenerateReportScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state alive when swiping to another bottom-nav
+  // tab, instead of disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
@@ -244,7 +249,7 @@ class _GenerateReportScreenState
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           width: width,
           height: 58,
@@ -252,15 +257,8 @@ class _GenerateReportScreenState
             horizontal: 16,
           ),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             mainAxisSize:
@@ -1080,6 +1078,8 @@ class _GenerateReportScreenState
   Widget build(
     BuildContext context,
   ) {
+    super.build(context);
+
     final billing =
         _report?['billingSummary']
             as Map<String, dynamic>?;

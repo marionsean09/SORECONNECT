@@ -20,7 +20,14 @@ class SubmitComplaintScreen extends StatefulWidget {
 }
 
 class _SubmitComplaintScreenState
-    extends State<SubmitComplaintScreen> {
+    extends State<SubmitComplaintScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (form input, complaint history list)
+  // alive when swiping to another bottom-nav tab, instead of
+  // disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final ComplaintService _complaintService =
       ComplaintService();
 
@@ -774,6 +781,8 @@ class _SubmitComplaintScreenState
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Submit Complaint"),

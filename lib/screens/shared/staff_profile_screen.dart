@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:soreconnect/data/sorsogon_address_data.dart';
+import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/screens/auth/verify_email_screen.dart';
 
 // ============================================================
@@ -33,7 +34,14 @@ class StaffProfileScreen extends StatefulWidget {
   State<StaffProfileScreen> createState() => _StaffProfileScreenState();
 }
 
-class _StaffProfileScreenState extends State<StaffProfileScreen> {
+class _StaffProfileScreenState extends State<StaffProfileScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state (edit mode, unsaved field edits) alive
+  // when swiping to another bottom-nav tab, instead of disposing
+  // and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
@@ -51,7 +59,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _meterNumberController = TextEditingController();
 
   String? _selectedMunicipality;
 
@@ -63,6 +70,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   bool _savingProfile = false;
   bool _profileLoaded = false;
   bool _saveButtonPressed = false;
+  bool _logoutButtonPressed = false;
 
   String? _pendingEmail;
   bool _resendingPendingEmail = false;
@@ -100,7 +108,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   void dispose() {
     _fullNameController.dispose();
     _emailController.dispose();
-    _meterNumberController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -157,6 +164,52 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   }
 
   // ============================================================
+  // LOGOUT
+  // ============================================================
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    await _auth.signOut();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
+  // ============================================================
   // LOAD PROFILE
   // ============================================================
 
@@ -171,7 +224,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
       final data = doc.data() ?? {};
 
       _fullNameController.text = data['full_name']?.toString() ?? '';
-      _meterNumberController.text = data['meterNumber']?.toString() ?? '';
 
       // Firebase Auth's email is the source of truth for the
       // actual sign-in email — Firestore's copy is only a cache
@@ -437,61 +489,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   }
 
   // ============================================================
-  // PROPAGATE METER NUMBER UPDATES ACROSS ACCOUNT RECORDS
-  // ============================================================
-
-  Future<void> _syncMeterNumberAcrossRelatedRecords({
-    required String uid,
-    required String newMeterNumber,
-  }) async {
-    final normalizedMeterNumber = newMeterNumber.trim();
-
-    if (uid.isEmpty || normalizedMeterNumber.isEmpty) {
-      return;
-    }
-
-    try {
-      final refs = <DocumentReference>{};
-
-      final billDocsByConsumer = await _firestore
-          .collection('bills')
-          .where('consumerId', isEqualTo: uid)
-          .get();
-
-      for (final doc in billDocsByConsumer.docs) {
-        refs.add(doc.reference);
-      }
-
-      final readingDocsByConsumer = await _firestore
-          .collection('meter_readings')
-          .where('consumerId', isEqualTo: uid)
-          .get();
-
-      for (final doc in readingDocsByConsumer.docs) {
-        refs.add(doc.reference);
-      }
-
-      if (refs.isEmpty) {
-        return;
-      }
-
-      final batch = _firestore.batch();
-
-      for (final ref in refs) {
-        batch.update(ref, {
-          'meterNumber': normalizedMeterNumber,
-          'meter_number': normalizedMeterNumber,
-          'meterNo': normalizedMeterNumber,
-        });
-      }
-
-      await batch.commit();
-    } catch (e) {
-      debugPrint('Error syncing meter number across related records: $e');
-    }
-  }
-
-  // ============================================================
   // SAVE PROFILE
   // ============================================================
 
@@ -617,13 +614,8 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     }
 
     try {
-      final newMeterNumber = _meterNumberController.text.trim();
-
       await _firestore.collection('users').doc(user.uid).set({
         'full_name': _fullNameController.text.trim(),
-        'meterNumber': newMeterNumber,
-        'meter_number': newMeterNumber,
-        'meterNo': newMeterNumber,
 
         'email': currentAuthEmail,
 
@@ -639,11 +631,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
       if (!mounted) return;
 
       final navigator = Navigator.of(context);
-
-      await _syncMeterNumberAcrossRelatedRecords(
-        uid: user.uid,
-        newMeterNumber: newMeterNumber,
-      );
 
       setState(() {
         _editingProfile = false;
@@ -950,11 +937,53 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
   }
 
   // ============================================================
+  // LOGOUT BUTTON
+  // ============================================================
+
+  Widget _logoutButton() {
+    return Listener(
+      onPointerDown: (_) => setState(() => _logoutButtonPressed = true),
+      onPointerUp: (_) => setState(() => _logoutButtonPressed = false),
+      onPointerCancel: (_) => setState(() => _logoutButtonPressed = false),
+      child: AnimatedScale(
+        scale: _logoutButtonPressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _logout,
+            icon: Icon(Icons.logout, size: 19, color: Colors.red.shade600),
+            label: Text(
+              'Log Out',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.3,
+                color: Colors.red.shade600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: BorderSide(color: Colors.red.shade200),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final user = _auth.currentUser;
 
     return Scaffold(
@@ -1211,16 +1240,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                         ),
 
                         // ==========================================
-                        // METER NUMBER
-                        // ==========================================
-                        _profileField(
-                          label: 'Meter Number',
-                          icon: Icons.speed_outlined,
-                          controller: _meterNumberController,
-                          enabled: _editingProfile,
-                        ),
-
-                        // ==========================================
                         // BRANCH (MUNICIPALITY)
                         // ==========================================
                         const SizedBox(height: 2),
@@ -1463,6 +1482,14 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 24),
+
+                  // ==================================================
+                  // LOGOUT
+                  // ==================================================
+
+                  _logoutButton(),
                 ],
               ),
             ),

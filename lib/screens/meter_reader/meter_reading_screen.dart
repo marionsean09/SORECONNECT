@@ -20,7 +20,11 @@ class MeterReadingScreen extends StatefulWidget {
 }
 
 class _MeterReadingScreenState extends State<MeterReadingScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state alive when swiping to another bottom-nav
+  // tab, instead of disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
   // ============================================================
   // FIREBASE / SERVICES
   // ============================================================
@@ -30,6 +34,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   final RateService _rateService = RateService();
 
   StreamSubscription<RateModel>? _rateSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
 
   // ============================================================
   // CONTROLLERS
@@ -87,6 +92,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
   List<String> _barangays = [];
 
+  // Whether this meter reader's fixed branch (from their profile) is
+  // still being fetched. The municipality is no longer picked by
+  // hand here — it's always the reader's own assigned branch, and
+  // only the barangay is selected within it.
+  bool _branchLoading = true;
+
   // ============================================================
   // THEME
   // ============================================================
@@ -126,6 +137,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
     _municipalities =
         getSorsogonSecondDistrictMunicipalities();
+
+    _listenToBranch();
 
     _loadRate();
 
@@ -175,6 +188,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
     _adjustmentsController.dispose();
 
     _rateSub?.cancel();
+    _branchSub?.cancel();
     _entranceController.dispose();
 
     super.dispose();
@@ -230,32 +244,67 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   }
 
   // ============================================================
-  // MUNICIPALITY CHANGE
+  // LISTEN TO BRANCH
+  //
+  // The municipality is no longer picked by hand — it's always this
+  // meter reader's own assigned branch, set in their profile. That
+  // branch stays editable there, so this listens live (not a
+  // one-off fetch) — if it's changed mid-session, this screen picks
+  // it up immediately instead of showing a stale municipality.
   // ============================================================
 
-  void _onMunicipalityChanged(
-    String? municipality,
-  ) {
-    setState(() {
-      _selectedMunicipality =
-          municipality;
+  void _listenToBranch() {
+    final uid = _auth.currentUser?.uid;
 
-      _selectedBarangay = null;
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
 
-      _barangays =
-          getBarangaysForMunicipality(
-        municipality,
-      );
+    _branchSub = _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
 
-      _consumer = null;
+            final municipality = doc.data()?['municipality']?.toString();
 
-      _previousReading = 0;
-      _consumption = 0;
-      _breakdown = null;
+            final resolved =
+                (municipality != null &&
+                    municipality.isNotEmpty &&
+                    _municipalities.contains(municipality))
+                ? municipality
+                : null;
 
-      _searchValueController.clear();
-      _currentReadingController.clear();
-    });
+            final changed = resolved != _selectedMunicipality;
+
+            setState(() {
+              _selectedMunicipality = resolved;
+              _barangays = getBarangaysForMunicipality(_selectedMunicipality);
+              _branchLoading = false;
+
+              // The branch changed (e.g. reassigned from profile) —
+              // clear anything scoped to the old municipality so
+              // nothing stale (barangay, a loaded consumer) carries
+              // over into the new one.
+              if (changed) {
+                _selectedBarangay = null;
+                _consumer = null;
+                _previousReading = 0;
+                _consumption = 0;
+                _breakdown = null;
+                _searchValueController.clear();
+                _currentReadingController.clear();
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
   }
 
   // ============================================================
@@ -298,7 +347,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
     if (_selectedMunicipality == null) {
       _showSnackBar(
-        "Please select a municipality first.",
+        "Your branch isn't set yet. Update your profile first.",
       );
       return;
     }
@@ -680,7 +729,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
     if (_selectedMunicipality == null ||
         _selectedBarangay == null) {
       _showSnackBar(
-        "Please select the municipality and barangay first.",
+        "Your branch isn't set yet, or no barangay is selected.",
       );
       return;
     }
@@ -995,6 +1044,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   Widget build(
     BuildContext context,
   ) {
+    super.build(context);
+
     return Scaffold(
       backgroundColor:
           _backgroundColor,
@@ -1011,11 +1062,6 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         title:
             const Text(
           "Record Meter Reading",
-          style: TextStyle(
-            fontWeight:
-                FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
         ),
       ),
 
@@ -1072,8 +1118,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
               ),
 
               Text(
-                "Select the household location before searching "
-                "the account.",
+                "Select the household's barangay within your "
+                "branch before searching the account.",
                 style:
                     TextStyle(
                   fontSize: 14,
@@ -1247,7 +1293,12 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
   }
 
   // ============================================================
-  // MUNICIPALITY DROPDOWN
+  // BRANCH DISPLAY (LOCKED)
+  //
+  // The municipality is no longer a dropdown — it's this meter
+  // reader's own fixed branch, set once in their profile. Shown
+  // here read-only so it's clear where the household search is
+  // scoped to, without letting it be changed from this screen.
   // ============================================================
 
   Widget _buildMunicipalityDropdown() {
@@ -1258,7 +1309,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
       padding:
           const EdgeInsets.symmetric(
         horizontal: 18,
-        vertical: 5,
+        vertical: 16,
       ),
 
       decoration:
@@ -1292,79 +1343,43 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
         ],
       ),
 
-      child:
-          DropdownButtonHideUnderline(
-        child:
-            DropdownButton<String>(
-          value:
-              _selectedMunicipality,
-
-          isExpanded:
-              true,
-
-          borderRadius:
-              BorderRadius.circular(
-            16,
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_city_outlined,
+            color: _primaryOrange,
+            size: 25,
           ),
 
-          hint:
-              const Row(
-            children: [
-              Icon(
-                Icons.location_city_outlined,
-                color:
-                    _primaryOrange,
-                size:
-                    25,
-              ),
+          const SizedBox(width: 12),
 
-              SizedBox(
-                width: 12,
-              ),
-
-              Text(
-                "All Municipalities",
-                style:
-                    TextStyle(
-                  fontSize: 16,
-                  color:
-                      Colors.black87,
-                ),
-              ),
-            ],
-          ),
-
-          icon:
-              const Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color:
-                Colors.grey,
-          ),
-
-          items:
-              _municipalities.map(
-            (municipality) {
-              return DropdownMenuItem<String>(
-                value:
-                    municipality,
-
-                child:
-                    Text(
-                  municipality,
-                  style:
-                      const TextStyle(
-                    fontSize: 16,
+          Expanded(
+            child: _branchLoading
+                ? Text(
+                    "Loading your branch...",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey.shade500,
+                    ),
+                  )
+                : Text(
+                    _selectedMunicipality ??
+                        "Branch not set — update your profile first",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: _selectedMunicipality == null
+                          ? Colors.red.shade600
+                          : Colors.black87,
+                    ),
                   ),
-                ),
-              );
-            },
-          ).toList(),
+          ),
 
-          onChanged:
-              _isLoading
-                  ? null
-                  : _onMunicipalityChanged,
-        ),
+          Icon(
+            Icons.lock_outline,
+            color: Colors.grey.shade400,
+            size: 18,
+          ),
+        ],
       ),
     );
   }
@@ -1459,7 +1474,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
               Text(
                 enabled
                     ? "Select Barangay"
-                    : "Select Municipality First",
+                    : "Set your branch in Profile first",
 
                 style:
                     TextStyle(
@@ -1587,8 +1602,8 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
 
           Text(
             enabled
-                ? "Search a household within the selected location."
-                : "Select municipality and barangay first.",
+                ? "Search a household within your branch."
+                : "Select a barangay first.",
 
             style:
                 TextStyle(
@@ -1961,7 +1976,7 @@ class _MeterReadingScreenState extends State<MeterReadingScreen>
             locationReady
                 ? "Enter the consumer's account number "
                   "or meter number above to continue."
-                : "Choose a municipality and barangay "
+                : "Choose a barangay within your branch "
                   "before searching for a consumer.",
 
             textAlign:

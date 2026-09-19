@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:soreconnect/widgets/minimal_filter_bar.dart';
+
 class MonitorReportsScreen extends StatefulWidget {
   const MonitorReportsScreen({super.key});
 
@@ -8,7 +10,13 @@ class MonitorReportsScreen extends StatefulWidget {
   State<MonitorReportsScreen> createState() => _MonitorReportsScreenState();
 }
 
-class _MonitorReportsScreenState extends State<MonitorReportsScreen> {
+class _MonitorReportsScreenState extends State<MonitorReportsScreen>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps this tab's state alive when swiping to another bottom-nav
+  // tab, instead of disposing and rebuilding from scratch each time.
+  @override
+  bool get wantKeepAlive => true;
+
   String _selectedMonth = 'January';
   String _selectedYear = '2026';
 
@@ -133,11 +141,38 @@ class _MonitorReportsScreenState extends State<MonitorReportsScreen> {
   }
 
   // ============================================================
+  // DATE FILTER FIELD (label + minimal dropdown)
+  // ============================================================
+
+  Widget _dateFilterField({
+    required String label,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        child,
+      ],
+    );
+  }
+
+  // ============================================================
   // BUILD SCREEN
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Monitor Reports'),
@@ -156,54 +191,46 @@ class _MonitorReportsScreenState extends State<MonitorReportsScreen> {
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedMonth,
-                    decoration: const InputDecoration(
-                      labelText: 'Month',
-                      border: OutlineInputBorder(),
+                  child: _dateFilterField(
+                    label: 'Month',
+                    child: MinimalDropdown<String>(
+                      value: _selectedMonth,
+                      items: _months,
+                      itemLabel: (value) => value,
+                      fullWidth: true,
+                      onChanged: (value) {
+                        if (value == null) return;
+
+                        setState(() {
+                          _selectedMonth = value;
+                        });
+
+                        _loadSavedReport();
+                      },
                     ),
-                    items: _months.map((month) {
-                      return DropdownMenuItem<String>(
-                        value: month,
-                        child: Text(month),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setState(() {
-                        _selectedMonth = value;
-                      });
-
-                      _loadSavedReport();
-                    },
                   ),
                 ),
 
                 const SizedBox(width: 16),
 
                 Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedYear,
-                    decoration: const InputDecoration(
-                      labelText: 'Year',
-                      border: OutlineInputBorder(),
+                  child: _dateFilterField(
+                    label: 'Year',
+                    child: MinimalDropdown<String>(
+                      value: _selectedYear,
+                      items: _years,
+                      itemLabel: (value) => value,
+                      fullWidth: true,
+                      onChanged: (value) {
+                        if (value == null) return;
+
+                        setState(() {
+                          _selectedYear = value;
+                        });
+
+                        _loadSavedReport();
+                      },
                     ),
-                    items: _years.map((year) {
-                      return DropdownMenuItem<String>(
-                        value: year,
-                        child: Text(year),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value == null) return;
-
-                      setState(() {
-                        _selectedYear = value;
-                      });
-
-                      _loadSavedReport();
-                    },
                   ),
                 ),
               ],

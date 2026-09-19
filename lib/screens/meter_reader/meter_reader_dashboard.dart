@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'package:soreconnect/screens/meter_reader/meter_reading_screen.dart';
-import 'package:soreconnect/screens/auth/login_screen.dart';
 import 'package:soreconnect/screens/shared/staff_profile_screen.dart';
 import 'package:soreconnect/utils/pending_email_guard.dart';
 import 'package:soreconnect/data/sorsogon_address_data.dart';
@@ -16,6 +17,15 @@ import 'package:soreconnect/widgets/export_bill_sheet.dart';
 import 'package:soreconnect/widgets/minimal_filter_bar.dart';
 import 'package:soreconnect/widgets/ticket_badge.dart';
 
+// ============================================================
+// METER READER DASHBOARD (TAB SHELL)
+//
+// Hosts the bottom nav's 3 destinations as sibling pages in one
+// PageView instead of pushing each as a separate route — see
+// consumer_dashboard.dart for the full rationale (no back arrow,
+// swipeable, each tab keeps its state alive).
+// ============================================================
+
 class MeterReaderDashboard extends StatefulWidget {
   const MeterReaderDashboard({super.key});
 
@@ -23,10 +33,126 @@ class MeterReaderDashboard extends StatefulWidget {
   State<MeterReaderDashboard> createState() => _MeterReaderDashboardState();
 }
 
-class _MeterReaderDashboardState extends State<MeterReaderDashboard>
-    with SingleTickerProviderStateMixin {
+class _MeterReaderDashboardState extends State<MeterReaderDashboard> {
   static const Color _primaryGreen = Color(0xFF1B5E20);
-  static const Color _accentGold = Color(0xFFDAA520);
+
+  // Strong ease-out — starts fast so a tapped tab feels immediate
+  // rather than a generic linear/ease-in-out glide.
+  static const Curve _tabCurve = Cubic(0.23, 1, 0.32, 1);
+
+  late final PageController _pageController;
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = const [
+    _MeterReaderHomeTab(),
+    MeterReadingScreen(),
+    StaffProfileScreen(role: 'Meter Reader', userTypeValue: 'meter_reader'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pageController = PageController();
+
+    // Safety net: finishes signing out if an email change was
+    // confirmed while this screen wasn't the one watching for it
+    // (e.g. backed out of the verify screen, or the app was
+    // backgrounded when the confirmation link was tapped).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) checkPendingEmailConfirmed(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _goToTab(int index) {
+    if (index == _currentIndex) return;
+
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 280),
+      curve: _tabCurve,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: _pages,
+      ),
+
+      // --------------------------------------------------------
+      // BOTTOM NAVIGATION
+      // --------------------------------------------------------
+
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          selectedItemColor: _primaryGreen,
+          elevation: 12,
+          onTap: _goToTab,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.home_outlined,
+              ),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.edit,
+              ),
+              label: 'Readings',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.person_outline,
+              ),
+              label: 'Profile',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME TAB
+//
+// Unchanged from the dashboard's previous single-screen body —
+// only relocated here so it can live as its own PageView page
+// with its own keep-alive state, same as every other tab.
+// ============================================================
+
+class _MeterReaderHomeTab extends StatefulWidget {
+  const _MeterReaderHomeTab();
+
+  @override
+  State<_MeterReaderHomeTab> createState() => _MeterReaderHomeTabState();
+}
+
+class _MeterReaderHomeTabState extends State<_MeterReaderHomeTab>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  static const Color _primaryGreen = Color(0xFF1B5E20);
 
   // ------------------------------------------------------------
   // FILTERS
@@ -34,6 +160,12 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
   String _selectedMunicipality = 'All Municipalities';
   String _selectedBarangay = 'All Barangays';
+
+  // Whether this meter reader's fixed branch (from their profile) is
+  // still being fetched. The municipality filter is no longer picked
+  // by hand — it's locked to the reader's own assigned branch, and
+  // only the barangay stays freely selectable within it.
+  bool _branchLoading = true;
 
   String _sortBy = 'Newest';
 
@@ -43,9 +175,6 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-
-  // Cache consumer locations so we do not repeatedly query Firestore.
-  final Map<String, Map<String, dynamic>> _locationCache = {};
 
   // ------------------------------------------------------------
   // READINGS STREAM
@@ -60,6 +189,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
   late final Stream<QuerySnapshot> _readingsStream;
 
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _branchSub;
+
   // ------------------------------------------------------------
   // ENTRANCE ANIMATION
   // ------------------------------------------------------------
@@ -68,19 +199,9 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   late final Animation<double> _fadeAnimation;
   late final Animation<Offset> _slideAnimation;
 
-  bool _logoutPressed = false;
-
   @override
   void initState() {
     super.initState();
-
-    // Safety net: finishes signing out if an email change was
-    // confirmed while this screen wasn't the one watching for it
-    // (e.g. backed out of the verify screen, or the app was
-    // backgrounded when the confirmation link was tapped).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) checkPendingEmailConfirmed(context);
-    });
 
     final user = FirebaseAuth.instance.currentUser;
 
@@ -107,6 +228,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
       _backfillOrphanedReadings(user.uid);
     }
 
+    _listenToBranch();
+
     _entranceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 520),
@@ -129,6 +252,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   void dispose() {
     _entranceController.dispose();
     _searchController.dispose();
+    _branchSub?.cancel();
     super.dispose();
   }
 
@@ -142,62 +266,92 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   // reading still carrying one of its known past emails, so they
   // reappear via the UID half of that filter. Once a document has
   // `recordedByUid`, later runs skip it — cheap to leave running.
+  //
+  // Every orphaned reading is attributed to whichever meter reader
+  // account happens to run this migration first — safe only because
+  // staff accounts aren't self-registered (there's exactly one
+  // meter reader in this deployment, not many competing for the
+  // same legacy records). Matching by a specific past email wasn't
+  // enough: an account can rack up several old emails across
+  // testing/changes, and any not on that list stayed orphaned.
   // ------------------------------------------------------------
 
-  static const List<String> _knownPastEmails = [
-    'meter_reader1_soreco1@email.com',
-  ];
-
   Future<void> _backfillOrphanedReadings(String uid) async {
-    for (final oldEmail in _knownPastEmails) {
-      try {
-        final orphaned = await FirebaseFirestore.instance
-            .collection('meter_readings')
-            .where('recordedBy', isEqualTo: oldEmail)
-            .where('recordedByUid', isNull: true)
-            .get();
+    try {
+      final orphaned = await FirebaseFirestore.instance
+          .collection('meter_readings')
+          .where('recordedByUid', isNull: true)
+          .get();
 
-        if (orphaned.docs.isEmpty) continue;
+      if (orphaned.docs.isEmpty) return;
 
-        final batch = FirebaseFirestore.instance.batch();
+      final batch = FirebaseFirestore.instance.batch();
 
-        for (final doc in orphaned.docs) {
-          batch.update(doc.reference, {'recordedByUid': uid});
-        }
-
-        await batch.commit();
-      } catch (e) {
-        debugPrint(
-          'Failed to backfill readings for $oldEmail: $e',
-        );
+      for (final doc in orphaned.docs) {
+        batch.update(doc.reference, {'recordedByUid': uid});
       }
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Failed to backfill orphaned readings: $e');
     }
   }
 
   // ------------------------------------------------------------
-  // LOGOUT
+  // LISTEN TO BRANCH
+  //
+  // The location filter is locked to this meter reader's own
+  // assigned branch, set in their profile. That branch stays
+  // editable there, so this listens live (not a one-off fetch) — if
+  // it's changed mid-session, this filter picks it up immediately
+  // instead of showing a stale municipality.
   // ------------------------------------------------------------
 
-  Future<void> _logout() async {
-    await FirebaseAuth.instance.signOut();
+  void _listenToBranch() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
 
-    if (!mounted) return;
+    if (uid == null) {
+      if (mounted) setState(() => _branchLoading = false);
+      return;
+    }
 
-    Navigator.pushReplacement(
-      context,
-      smoothPageRoute(const LoginScreen()),
-    );
-  }
+    _branchSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (!mounted) return;
 
-  // ------------------------------------------------------------
-  // MUNICIPALITIES
-  // ------------------------------------------------------------
+            final municipality = doc.data()?['municipality']?.toString();
 
-  List<String> get _municipalities {
-    return [
-      'All Municipalities',
-      ...getSorsogonSecondDistrictMunicipalities(),
-    ];
+            final resolved =
+                (municipality != null &&
+                    municipality.isNotEmpty &&
+                    getSorsogonSecondDistrictMunicipalities().contains(
+                      municipality,
+                    ))
+                ? municipality
+                : 'All Municipalities';
+
+            final changed = resolved != _selectedMunicipality;
+
+            setState(() {
+              _selectedMunicipality = resolved;
+              _branchLoading = false;
+
+              // The branch changed (e.g. reassigned from profile) —
+              // drop any barangay picked under the old municipality.
+              if (changed) {
+                _selectedBarangay = 'All Barangays';
+              }
+            });
+          },
+          onError: (e) {
+            if (!mounted) return;
+            setState(() => _branchLoading = false);
+          },
+        );
   }
 
   // ------------------------------------------------------------
@@ -358,161 +512,6 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
     }
 
     return result;
-  }
-
-  // ------------------------------------------------------------
-  // ACCOUNT NUMBER NORMALIZATION
-  // ------------------------------------------------------------
-
-  String _normalizeAccountNumber(String value) {
-    return value.trim();
-  }
-
-  // ------------------------------------------------------------
-  // FIND USER BY ACCOUNT NUMBER
-  // ------------------------------------------------------------
-
-  Future<Map<String, dynamic>?> _findUserByAccountNumber(
-    String accountNumber,
-  ) async {
-    final normalizedAccountNumber =
-        _normalizeAccountNumber(accountNumber);
-
-    if (normalizedAccountNumber.isEmpty) {
-      return null;
-    }
-
-    try {
-      final firestore = FirebaseFirestore.instance;
-
-      final fields = [
-        'accountNumber',
-        'accountNo',
-        'account_number',
-      ];
-
-      for (final field in fields) {
-        try {
-          final result = await firestore
-              .collection('users')
-              .where(
-                field,
-                isEqualTo: normalizedAccountNumber,
-              )
-              .limit(1)
-              .get();
-
-          if (result.docs.isNotEmpty) {
-            return result.docs.first.data();
-          }
-        } catch (_) {
-          // Continue checking the other possible fields.
-        }
-      }
-    } catch (_) {
-      // Ignore lookup errors.
-    }
-
-    return null;
-  }
-
-  // ------------------------------------------------------------
-  // GET CONSUMER LOCATION WITH FALLBACK
-  // ------------------------------------------------------------
-
-  Future<Map<String, dynamic>> _getConsumerLocation(
-    Map<String, dynamic> readingData,
-  ) async {
-    final directLocation = _getReadingLocation(
-      readingData,
-    );
-
-    final hasDirectLocation =
-        directLocation['barangay'].toString().trim().isNotEmpty ||
-        directLocation['municipality'].toString().trim().isNotEmpty ||
-        directLocation['address'].toString().trim().isNotEmpty;
-
-    if (hasDirectLocation) {
-      return directLocation;
-    }
-
-    final accountNumber = _normalizeAccountNumber(
-      _stringValue(
-        readingData['accountNumber'],
-      ),
-    );
-
-    if (accountNumber.isEmpty) {
-      return directLocation;
-    }
-
-    if (_locationCache.containsKey(accountNumber)) {
-      return _locationCache[accountNumber]!;
-    }
-
-    final userData = await _findUserByAccountNumber(
-      accountNumber,
-    );
-
-    if (userData == null) {
-      return directLocation;
-    }
-
-    String barangay = _stringValue(
-      userData['barangay'],
-    );
-
-    String municipality = _stringValue(
-      userData['municipality'],
-    );
-
-    if (municipality.isEmpty) {
-      municipality = _stringValue(
-        userData['municipalityName'],
-      );
-    }
-
-    if (municipality.isEmpty) {
-      municipality = _stringValue(
-        userData['city'],
-      );
-    }
-
-    String province = _stringValue(
-      userData['province'],
-    );
-
-    if (province.isEmpty) {
-      province = 'Sorsogon';
-    }
-
-    String address = _stringValue(
-      userData['address'],
-    );
-
-    if (address.isEmpty &&
-        municipality.isNotEmpty &&
-        barangay.isNotEmpty) {
-      try {
-        address = buildSorsogonAddress(
-          municipality: municipality,
-          barangay: barangay,
-        );
-      } catch (_) {
-        address = '$barangay, $municipality, $province';
-      }
-    }
-
-    final location = {
-      'barangay': barangay,
-      'municipality': municipality,
-      'province': province,
-      'address': address,
-    };
-
-    _locationCache[accountNumber] = location;
-
-    return location;
   }
 
   // ------------------------------------------------------------
@@ -717,28 +716,61 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
   }
 
   // ------------------------------------------------------------
+  // BRANCH DISPLAY (LOCKED)
+  //
+  // The municipality is no longer a dropdown — it's this meter
+  // reader's own fixed branch, set once in their profile.
+  // ------------------------------------------------------------
+
+  Widget _buildBranchLocked() {
+    final unset = !_branchLoading && _selectedMunicipality == 'All Municipalities';
+
+    return Container(
+      width: double.infinity,
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_city_rounded,
+            size: 17,
+            color: unset ? Colors.grey.shade400 : Colors.orange,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _branchLoading
+                  ? 'Loading your branch...'
+                  : (unset
+                      ? 'Branch not set — update your profile'
+                      : _selectedMunicipality),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: unset ? Colors.red.shade600 : Colors.grey.shade800,
+              ),
+            ),
+          ),
+          Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
   // LOCATION FILTER SECTION
   // ------------------------------------------------------------
 
   Widget _buildLocationFilters() {
     return Column(
       children: [
-        _buildLocationDropdown(
-          icon: Icons.location_city_rounded,
-          value: _selectedMunicipality,
-          items: _municipalities,
-          hint: 'All Municipalities',
-          onChanged: (value) {
-            if (value == null) return;
-
-            setState(() {
-              _selectedMunicipality = value;
-
-              // Reset barangay whenever municipality changes.
-              _selectedBarangay = 'All Barangays';
-            });
-          },
-        ),
+        _buildBranchLocked(),
 
         const SizedBox(height: 14),
 
@@ -830,6 +862,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
     final statusColor = isVerified ? Colors.green : Colors.orange;
 
+    final ticketNumber = BillModel.ticketNumberFor(data, doc.id);
+
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _showReadingDetailSheet(doc),
@@ -859,14 +893,27 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    data['consumerName'] ?? 'Unknown Consumer',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                  Row(
+                    children: [
+                      if (ticketNumber.isNotEmpty) ...[
+                        TicketBadge(
+                          ticketNumber: ticketNumber,
+                          color: _primaryGreen,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          data['consumerName'] ?? 'Unknown Consumer',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -1234,6 +1281,8 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       backgroundColor:
           const Color(0xFFFFF9ED),
@@ -1243,37 +1292,30 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
       // --------------------------------------------------------
 
       appBar: AppBar(
-        title: const Text(
-          'Meter Reader Dashboard',
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/soreco_logo.png',
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Flexible(
+              child: Text(
+                'SORECONNECT',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         backgroundColor:
             Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          Listener(
-            onPointerDown: (_) => setState(
-              () => _logoutPressed = true,
-            ),
-            onPointerUp: (_) => setState(
-              () => _logoutPressed = false,
-            ),
-            onPointerCancel: (_) => setState(
-              () => _logoutPressed = false,
-            ),
-            child: AnimatedScale(
-              scale: _logoutPressed ? 0.88 : 1.0,
-              duration: const Duration(milliseconds: 120),
-              curve: Curves.easeOut,
-              child: IconButton(
-                icon: const Icon(
-                  Icons.logout,
-                ),
-                onPressed: _logout,
-              ),
-            ),
-          ),
-        ],
       ),
 
       // --------------------------------------------------------
@@ -1493,7 +1535,7 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                           CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Meter Reader Dashboard',
+                          'WELCOME, Meter Reader',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight:
@@ -1637,52 +1679,6 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
                         Colors.green,
                       ),
                     ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // ============================================
-                  // INFORMATION
-                  // ============================================
-
-                  Container(
-                    width: double.infinity,
-                    padding:
-                        const EdgeInsets.all(14),
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          const Color(
-                        0xFFE8F5E9,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(
-                        14,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: _accentGold,
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        const Expanded(
-                          child: Text(
-                            'Meter readings are reviewed by the teller before the official bill is generated.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color:
-                                  Color(
-                                0xFF2E7D32,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
 
                   const SizedBox(height: 24),
@@ -1840,58 +1836,6 @@ class _MeterReaderDashboardState extends State<MeterReaderDashboard>
               ),
             );
           },
-        ),
-      ),
-
-      // --------------------------------------------------------
-      // BOTTOM NAVIGATION
-      // --------------------------------------------------------
-
-      bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(20),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: 0,
-          elevation: 12,
-          onTap: (index) {
-            if (index == 1) {
-              Navigator.push(
-                context,
-                smoothPageRoute(const MeterReadingScreen()),
-              );
-            } else if (index == 2) {
-              Navigator.push(
-                context,
-                smoothPageRoute(
-                  const StaffProfileScreen(
-                    role: 'Meter Reader',
-                    userTypeValue: 'meter_reader',
-                  ),
-                ),
-              );
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home_outlined,
-              ),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.edit,
-              ),
-              label: 'Readings',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.person_outline,
-              ),
-              label: 'Profile',
-            ),
-          ],
         ),
       ),
     );

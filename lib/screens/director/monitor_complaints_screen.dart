@@ -55,6 +55,13 @@ class _MonitorComplaintsScreenState
       TextEditingController();
   String _searchQuery = '';
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot> _complaintsStream =
+      FirebaseFirestore.instance.collection('complaints').snapshots();
+
   final Map<String, Map<String, dynamic>> _locationCache = {};
 
   @override
@@ -1121,9 +1128,7 @@ class _MonitorComplaintsScreenState
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('complaints')
-                  .snapshots(),
+              stream: _complaintsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState ==
                     ConnectionState.waiting) {

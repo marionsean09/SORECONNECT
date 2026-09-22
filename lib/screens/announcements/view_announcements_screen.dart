@@ -55,6 +55,13 @@ class _ViewAnnouncementsScreenState
       TextEditingController();
   String _searchQuery = '';
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot> _announcementsStream =
+      FirebaseFirestore.instance.collection('announcements').snapshots();
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -463,13 +470,7 @@ class _ViewAnnouncementsScreenState
           Expanded(
             child:
                 StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore
-                      .instance
-                      .collection(
-                    'announcements',
-                  )
-                      .snapshots(),
+              stream: _announcementsStream,
 
               builder:
                   (context, snapshot) {

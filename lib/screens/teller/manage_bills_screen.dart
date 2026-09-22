@@ -37,6 +37,13 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot> _billsStream =
+      _firestore.collection('bills').snapshots();
+
   static const Color primaryOrange = Color(0xFFFFA000);
   static const Color backgroundColor = Color(0xFFFFF8E7);
 
@@ -1514,7 +1521,7 @@ class _ManageBillsScreenState extends State<ManageBillsScreen>
           _buildFilterBar(),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _firestore.collection('bills').snapshots(),
+              stream: _billsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState ==
                     ConnectionState.waiting) {

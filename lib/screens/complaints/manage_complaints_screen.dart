@@ -32,6 +32,12 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen>
   final ComplaintService _complaintService =
       ComplaintService();
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot> _complaintsStream =
+      _complaintService.getAllComplaints();
 
   static const Color primaryOrange = Color(0xFFFFA000);
   static const Color backgroundColor = Color(0xFFFFF8E7);
@@ -2287,9 +2293,7 @@ class _ManageComplaintsScreenState extends State<ManageComplaintsScreen>
               // USE COMPLAINT SERVICE
               // ==================================================
 
-              stream:
-                  _complaintService
-                      .getAllComplaints(),
+              stream: _complaintsStream,
 
               builder: (
                 context,

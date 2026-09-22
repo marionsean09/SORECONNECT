@@ -60,6 +60,13 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen>
       TextEditingController();
   String _searchQuery = '';
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot> _billsStream =
+      FirebaseFirestore.instance.collection('bills').snapshots();
+
   @override
   void initState() {
     super.initState();
@@ -1007,9 +1014,7 @@ class _MonitorBillsScreenState extends State<MonitorBillsScreen>
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('bills')
-                  .snapshots(),
+              stream: _billsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState ==
                     ConnectionState.waiting) {

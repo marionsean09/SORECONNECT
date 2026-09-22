@@ -49,6 +49,17 @@ class _SubmitComplaintScreenState
   String _searchQuery = '';
   String _historySortOption = 'Newest';
 
+  // Created once and reused across rebuilds — creating a fresh
+  // stream inline in build() (e.g. on every search keystroke) would
+  // make StreamBuilder tear down and re-subscribe each time,
+  // flashing the loading spinner and stalling the search field.
+  late final Stream<QuerySnapshot>? _complaintsHistoryStream =
+      FirebaseAuth.instance.currentUser == null
+          ? null
+          : _complaintService.getConsumerComplaints(
+              FirebaseAuth.instance.currentUser!.uid,
+            );
+
   final List<String> _complaintTypes = [
     "Billing",
     "Power Interruption",
@@ -1007,16 +1018,14 @@ class _SubmitComplaintScreenState
 
             Builder(
               builder: (context) {
-                final user =
-                    FirebaseAuth.instance.currentUser;
+                final stream = _complaintsHistoryStream;
 
-                if (user == null) {
+                if (stream == null) {
                   return const SizedBox.shrink();
                 }
 
                 return StreamBuilder<QuerySnapshot>(
-                  stream: _complaintService
-                      .getConsumerComplaints(user.uid),
+                  stream: stream,
 
                   builder: (context, snapshot) {
 

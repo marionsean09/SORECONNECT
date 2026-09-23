@@ -47,7 +47,9 @@ class BillBreakdownView extends StatelessWidget {
 
   final bool initiallyExpanded;
 
-  String _peso(double value) => '₱${value.toStringAsFixed(2)}';
+  String _peso(double value) => value < 0
+      ? '-₱${(-value).toStringAsFixed(2)}'
+      : '₱${value.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +128,8 @@ class BillBreakdownView extends StatelessWidget {
                     _totalRow('Current Bill', breakdown.currentBill),
                     if (breakdown.adjustments != 0)
                       _totalRow('Adjustments', breakdown.adjustments),
-                    _totalRow('Insurance', breakdown.insurance),
+                    for (final item in breakdown.footerItems)
+                      _totalRow(item.label, item.amount),
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 6),
                       child: Divider(height: 1),

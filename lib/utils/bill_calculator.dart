@@ -83,6 +83,10 @@ class BillBreakdown {
   final List<BillSection> sections;
   final double currentBill;
   final double insurance;
+  // Insurance plus any director-added flat "Other Fees" charges,
+  // itemized so new fees show up individually instead of only
+  // being folded into the `insurance` total.
+  final List<BillLineItem> footerItems;
   final double adjustments;
   final double interest;
   final double totalAmount;
@@ -91,6 +95,7 @@ class BillBreakdown {
     required this.sections,
     required this.currentBill,
     required this.insurance,
+    this.footerItems = const [],
     required this.adjustments,
     required this.interest,
     required this.totalAmount,
@@ -100,19 +105,41 @@ class BillBreakdown {
         'sections': sections.map((section) => section.toMap()).toList(),
         'currentBill': currentBill,
         'insurance': insurance,
+        'footerItems': footerItems.map((item) => item.toMap()).toList(),
         'adjustments': adjustments,
         'interest': interest,
         'totalAmount': totalAmount,
       };
 
   factory BillBreakdown.fromMap(Map<String, dynamic> map) {
+    final storedInsurance = (map['insurance'] as num?)?.toDouble() ?? 0;
+    final footerItemsRaw = map['footerItems'] as List?;
+
+    // Older, already-issued bills were frozen before `footerItems`
+    // existed — synthesize a single Insurance row for them so they
+    // still render correctly.
+    final footerItems = footerItemsRaw != null
+        ? footerItemsRaw
+            .map((item) => BillLineItem.fromMap(Map<String, dynamic>.from(item)))
+            .toList()
+        : [
+            BillLineItem(
+              key: 'insurance',
+              label: 'Insurance',
+              rate: null,
+              amount: storedInsurance,
+              isFlat: true,
+            ),
+          ];
+
     return BillBreakdown(
       sections: (map['sections'] as List? ?? [])
           .map((section) =>
               BillSection.fromMap(Map<String, dynamic>.from(section)))
           .toList(),
       currentBill: (map['currentBill'] as num?)?.toDouble() ?? 0,
-      insurance: (map['insurance'] as num?)?.toDouble() ?? 0,
+      insurance: storedInsurance,
+      footerItems: footerItems,
       adjustments: (map['adjustments'] as num?)?.toDouble() ?? 0,
       interest: (map['interest'] as num?)?.toDouble() ?? 0,
       totalAmount: (map['totalAmount'] as num?)?.toDouble() ?? 0,
@@ -159,6 +186,7 @@ BillBreakdown computeBillBreakdown({
 
   for (final def in RateModel.lineItems) {
     if (def.section == RateSection.footer) continue;
+    if (rate.disabledKeys.contains(def.key)) continue;
 
     final rateValue = rate.valueFor(def.key);
     final amount = def.isFlat ? rateValue : rateValue * consumption;
@@ -169,6 +197,37 @@ BillBreakdown computeBillBreakdown({
       rate: rateValue,
       amount: amount,
       isFlat: def.isFlat,
+    ));
+  }
+
+  // Director-added charges: same rate × consumption computation as
+  // the fixed line items above, grouped into whichever section they
+  // were added to. Charges first, subsidies last, so a subsidy
+  // always lands below the section's regular charges (matching the
+  // real bill's "deduction at the bottom" convention).
+  for (final custom in rate.customLineItems) {
+    if (custom.section == RateSection.footer || custom.isSubsidy) continue;
+    final amount = custom.isFlat ? custom.rate : custom.rate * consumption;
+    grouped[custom.section]!.add(BillLineItem(
+      key: 'custom_${custom.id}',
+      label: custom.label,
+      rate: custom.rate,
+      amount: amount,
+      isFlat: custom.isFlat,
+    ));
+  }
+
+  // Director-added subsidies deduct from the bill instead of adding
+  // to it, so their amount is negated.
+  for (final custom in rate.customLineItems) {
+    if (custom.section == RateSection.footer || !custom.isSubsidy) continue;
+    final amount = custom.isFlat ? custom.rate : custom.rate * consumption;
+    grouped[custom.section]!.add(BillLineItem(
+      key: 'custom_${custom.id}',
+      label: custom.label,
+      rate: custom.rate,
+      amount: -amount,
+      isFlat: custom.isFlat,
     ));
   }
 
@@ -197,12 +256,40 @@ BillBreakdown computeBillBreakdown({
       sections.fold(0.0, (sum, section) => sum + section.subtotal);
 
   final insurance = rate.insurance;
-  final totalAmount = currentBill + insurance + adjustments;
+
+  // Footer fees are always flat (charged once per bill), so unlike
+  // the sections above there's no per-kWh multiply — same treatment
+  // Insurance already had, just generalized to any director-added
+  // "Other Fees" charge alongside it.
+  final footerItems = <BillLineItem>[
+    if (!rate.disabledKeys.contains('insurance'))
+      BillLineItem(
+        key: 'insurance',
+        label: 'Insurance',
+        rate: null,
+        amount: insurance,
+        isFlat: true,
+      ),
+    for (final custom in rate.customLineItems)
+      if (custom.section == RateSection.footer)
+        BillLineItem(
+          key: 'custom_${custom.id}',
+          label: custom.label,
+          rate: null,
+          amount: custom.isSubsidy ? -custom.rate : custom.rate,
+          isFlat: true,
+        ),
+  ];
+
+  final footerTotal =
+      footerItems.fold(0.0, (sum, item) => sum + item.amount);
+  final totalAmount = currentBill + footerTotal + adjustments;
 
   return BillBreakdown(
     sections: sections,
     currentBill: currentBill,
     insurance: insurance,
+    footerItems: footerItems,
     adjustments: adjustments,
     interest: interest,
     totalAmount: totalAmount,

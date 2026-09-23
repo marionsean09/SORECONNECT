@@ -25,6 +25,66 @@ class RateLineItemDef {
   });
 }
 
+// ============================================================
+// CUSTOM RATE LINE ITEM
+//
+// A director-added charge or subsidy that doesn't exist as one of
+// RateModel's fixed fields. Stored as a list on RateModel so the
+// set of line items can grow/shrink at runtime instead of being
+// baked into the Dart source. `isSubsidy` items are deducted from
+// the bill instead of added to it.
+// ============================================================
+
+class CustomRateLineItem {
+  final String id;
+  final String label;
+  final RateSection section;
+  final double rate;
+  final bool isFlat;
+  final bool isSubsidy;
+
+  const CustomRateLineItem({
+    required this.id,
+    required this.label,
+    required this.section,
+    required this.rate,
+    this.isFlat = false,
+    this.isSubsidy = false,
+  });
+
+  CustomRateLineItem copyWith({double? rate}) => CustomRateLineItem(
+        id: id,
+        label: label,
+        section: section,
+        rate: rate ?? this.rate,
+        isFlat: isFlat,
+        isSubsidy: isSubsidy,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'label': label,
+        'section': section.name,
+        'rate': rate,
+        'isFlat': isFlat,
+        'isSubsidy': isSubsidy,
+      };
+
+  factory CustomRateLineItem.fromMap(Map<String, dynamic> map) {
+    return CustomRateLineItem(
+      id: map['id'] ?? '',
+      label: map['label'] ?? '',
+      section: RateSection.values.firstWhere(
+        (s) => s.name == map['section'],
+        orElse: () => RateSection.other,
+      ),
+      rate: (map['rate'] as num?)?.toDouble() ?? 0,
+      isFlat: map['isFlat'] ?? false,
+      isSubsidy: map['isSubsidy'] ?? false,
+    );
+  }
+}
+
 class RateModel {
   // ----------------------------------------------------------
   // CHARGES (₱ per kWh, except meteringRetailCustMo which is flat)
@@ -69,6 +129,15 @@ class RateModel {
   // ----------------------------------------------------------
   final double insurance;
 
+  // Director-added charges and subsidies, on top of the fixed
+  // fields above. See CustomRateLineItem.
+  final List<CustomRateLineItem> customLineItems;
+
+  // Keys of fixed `lineItems` the director removed from billing.
+  // Soft-deleted rather than dropped from the model so the stored
+  // rate isn't lost and the item can be restored later.
+  final Set<String> disabledKeys;
+
   final String updatedBy;
   final Timestamp updatedAt;
 
@@ -96,6 +165,8 @@ class RateModel {
     required this.rec,
     required this.seniorCitizenSubs,
     required this.insurance,
+    this.customLineItems = const [],
+    this.disabledKeys = const {},
     required this.updatedBy,
     required this.updatedAt,
   });
@@ -224,6 +295,11 @@ class RateModel {
       rec: field('rec'),
       seniorCitizenSubs: field('seniorCitizenSubs'),
       insurance: field('insurance'),
+      customLineItems: (map['customLineItems'] as List? ?? [])
+          .map((item) =>
+              CustomRateLineItem.fromMap(Map<String, dynamic>.from(item)))
+          .toList(),
+      disabledKeys: Set<String>.from(map['disabledKeys'] as List? ?? const []),
       updatedBy: map['updatedBy'] ?? '',
       updatedAt: map['updatedAt'] as Timestamp? ?? Timestamp.now(),
     );
@@ -233,9 +309,13 @@ class RateModel {
     Map<String, double> values, {
     required String updatedBy,
     Timestamp? updatedAt,
+    List<CustomRateLineItem> customLineItems = const [],
+    Set<String> disabledKeys = const {},
   }) {
     return RateModel.fromMap({
       ...values,
+      'customLineItems': customLineItems.map((item) => item.toMap()).toList(),
+      'disabledKeys': disabledKeys.toList(),
       'updatedBy': updatedBy,
       'updatedAt': updatedAt ?? Timestamp.now(),
     });
@@ -246,6 +326,8 @@ class RateModel {
   Map<String, dynamic> toMap() {
     return {
       for (final item in lineItems) item.key: valueFor(item.key),
+      'customLineItems': customLineItems.map((item) => item.toMap()).toList(),
+      'disabledKeys': disabledKeys.toList(),
       'updatedBy': updatedBy,
       'updatedAt': updatedAt,
     };

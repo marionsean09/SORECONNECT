@@ -29,6 +29,15 @@ class RateService {
       }
     }
 
+    for (final item in rate.customLineItems) {
+      if (item.label.trim().isEmpty) {
+        throw Exception('Every custom charge/subsidy needs a label');
+      }
+      if (item.rate < 0) {
+        throw Exception('${item.label} rate cannot be negative');
+      }
+    }
+
     await _firestore.collection('settings').doc(rateDocId).set({
       ...rate.toMap(),
       'updatedAt': FieldValue.serverTimestamp(),

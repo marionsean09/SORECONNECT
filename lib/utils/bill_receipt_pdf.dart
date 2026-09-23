@@ -26,7 +26,8 @@ import 'package:soreconnect/widgets/bill_breakdown_view.dart'
 const double _receiptWidthMm = 80;
 const double _receiptHeightMm = 320;
 
-String _peso(double value) => 'P${value.toStringAsFixed(2)}';
+String _peso(double value) =>
+    value < 0 ? '-P${(-value).toStringAsFixed(2)}' : 'P${value.toStringAsFixed(2)}';
 
 DateTime? _asDate(dynamic value) {
   if (value is Timestamp) return value.toDate();
@@ -154,7 +155,8 @@ Future<Uint8List> buildBillReceiptPdf({
           _kvAmount('Current Bill', _peso(breakdown.currentBill)),
           if (breakdown.adjustments != 0)
             _kvAmount('Adjustments', _peso(breakdown.adjustments)),
-          _kvAmount('Insurance', _peso(breakdown.insurance)),
+          for (final item in breakdown.footerItems)
+            _kvAmount(item.label, _peso(item.amount)),
           pw.SizedBox(height: 4),
           _dashedDivider(),
           pw.SizedBox(height: 4),
